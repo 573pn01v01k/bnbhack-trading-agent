@@ -8,3 +8,6 @@ __pycache__/
 runs/
 dist/
 .DS_Store
+src/bnbhack_agent/data/runtime/
+scripts/*.log
+*.log

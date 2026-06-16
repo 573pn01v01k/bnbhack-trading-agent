@@ -11,22 +11,40 @@ self-custody mode. It pays for its data keyless, per request, via **x402**.
 
 > Full design: [`docs/superpowers/specs/2026-06-16-bnbhack-trading-agent-design.md`](docs/superpowers/specs/2026-06-16-bnbhack-trading-agent-design.md)
 
-## Status
+## Result (walk-forward, out-of-sample — full report in `docs/BACKTEST_RESULTS_TRACK1.md`)
 
-This repo starts from a working backtest/strategy baseline and is being built into the live Track‑1 agent.
+Validated on **120 days of real hourly data** across **64 eligible BEP-20 tokens**. Every number is stitched out-of-sample (the only hyperparameter, the regime MA, is chosen on each train window and applied to the next unseen window):
 
-**Reused as-is (verified working, 15 tests passing):**
-- `indicators.py` — SMA/EMA/Wilder-RSI/MACD/rolling-std.
-- `backtest.py` — deterministic, no-lookahead, fee/drawdown/Sharpe model (supports shorts).
-- `battle.py` — train/test split + grid search; scoring already weights held-out profit first with a >30% drawdown penalty (matches Track 1).
-- `models.py`, `research_loop.py` (propose→backtest→critique→mutate scaffold), `execution.py` (TWAK CLI adapter).
+| Strategy (stitched OOS) | Return | Sharpe | Max DD |
+|---|---:|---:|---:|
+| **Regime-gated equal-weight (chosen)** | **+11.9%** | **1.50** | **14.7%** |
+| Equal-weight basket (baseline) | +7.0% | 0.75 | 27.9% |
+| BTC buy-and-hold | −2.4% | −0.02 | 28.0% |
+| Cross-sectional momentum | **−63%** (REJECTED — overfit) | −4.1 | 67.8% |
 
-**Being rebuilt for Track 1:**
-- **Real Monolit integration.** The baseline `MonolitMCPEnrichmentSource` is a placeholder that calls a non-existent tool and returns nothing — it is replaced with real Monolit MCP calls (`query_evm_onchain` on-chain BSC flow, `query_cex_normalized` funding/OI/taker, `get_token_security`, etc.).
-- **Multi-token rotation.** Baseline strategies are single-asset daily TA; the live engine rotates across the fixed 149 eligible BEP-20 tokens (+ stables) on an hourly cadence.
-- **Full execution.** Quote-only → real swaps, plus `x402` data payments, `automate` cadence, and `serve --watch` for unattended autonomous signing.
+The chosen strategy beats the basket on return, **doubles Sharpe, halves drawdown**, and sits well inside the 30% DQ gate. Naive momentum/reversal were tested under the same protocol and rejected for overfitting — the engine exposes that instead of hiding it. Reproduce: `python3 -m bnbhack_agent.cli track1-backtest`.
 
-`cmc_skill.py` (a Track‑2 Strategy Skill exporter) is carried over but is not part of the Track‑1 submission.
+## How it works
+
+- **Strategy** (`strategy.py`): hold a diversified equal-weight basket of the eligible tokens when BTC is risk-on (above its ~14-day MA); rotate fully to the stablecoin leg otherwise. Same function drives backtest and live (decision parity).
+- **Data moat** (`monolit.py`): live Monolit MCP client — on-chain BSC swap flow (`evm.swap_events`), CEX derivatives, token security — used as a live veto/tilt competitors using CMC-only do not have.
+- **Engine** (`marketdata.py`, `signals.py`, `portfolio.py`, `walkforward.py`): cached price/flow panels, no-lookahead simulator, walk-forward OOS evaluation vs baselines.
+- **Execution** (`execution.py`): Trust Wallet Agent Kit in self-custody — `twak swap --chain bsc`, x402-paid data, `automate` cadence, `serve --watch` for unattended signing. Risk caps gate every trade (drawdown stop inside the 30% gate, per-trade/daily limits, slippage).
+- **Registration** (`register.py`): the BSC `CompetitionRegistry` (optional `web3` extra).
+- **Agent** (`agent.py`): hourly decision → risk-gated trade plan → self-custody execution → structured decision log.
+
+`cmc_skill.py` (a Track‑2 Strategy Skill exporter) is carried over but is not part of this Track‑1 submission. Tests: **70 passing**.
+
+## Usage
+
+```bash
+python3 -m pip install -e .                 # optionally: pip install 'web3>=6'  (on-chain registration)
+python3 -m pytest -q                         # 70 passed
+PYTHONPATH=src python3 -m bnbhack_agent.cli track1-backtest          # reproduce the OOS result
+PYTHONPATH=src python3 -m bnbhack_agent.cli track1-run               # one decision cycle (dry-run)
+MONOLIT_API_KEY=... PYTHONPATH=src python3 -m bnbhack_agent.cli track1-run --monolit  # with the live edge
+PYTHONPATH=src python3 -m bnbhack_agent.cli track1-register          # registration window/status
+```
 
 ## The contest, briefly
 

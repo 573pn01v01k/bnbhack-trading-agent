@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 from .battle import run_battle_test
@@ -45,7 +46,55 @@ def main(argv: list[str] | None = None) -> int:
     battle.add_argument("--limit-grid", type=int, default=None)
     battle.add_argument("--train-ratio", type=float, default=0.70)
 
+    # ---- Track 1 (autonomous trading agent) ----
+    bt = sub.add_parser("track1-backtest", help="walk-forward OOS backtest of the frozen Track-1 strategy")
+    bt.add_argument("--days", type=int, default=120)
+
+    rn = sub.add_parser("track1-run", help="run one live decision cycle (dry-run by default)")
+    rn.add_argument("--live", action="store_true", help="execute real swaps (needs funded TWAK wallet)")
+    rn.add_argument("--capital", type=float, default=500.0)
+    rn.add_argument("--monolit", action="store_true", help="use the Monolit on-chain edge (needs MONOLIT_API_KEY)")
+
+    rg = sub.add_parser("track1-register", help="show CompetitionRegistry window + registration status")
+    rg.add_argument("--address", default=None, help="agent wallet address to check isRegistered")
+
     args = parser.parse_args(argv)
+    if args.command == "track1-backtest":
+        from .report import build_backtest_report
+
+        s = build_backtest_report(days=args.days)
+        so, ew = s["strategy_oos"], s["baselines"].get("equal_weight", {})
+        print(f"universe={s['universe_size']} bars={s['bars']} folds={s['n_folds']}")
+        print(f"STRATEGY  OOS: return={so['total_return']:+.2%} sharpe={so['sharpe']:.2f} max_dd={so['max_drawdown']:.2%}")
+        print(f"baseline  OOS: return={ew.get('total_return',0):+.2%} sharpe={ew.get('sharpe',0):.2f} max_dd={ew.get('max_drawdown',0):.2%}")
+        print(f"momentum  OOS: return={s['momentum_oos']['total_return']:+.2%} (rejected, overfit)")
+        print("wrote docs/BACKTEST_RESULTS_TRACK1.md")
+        return 0
+    if args.command == "track1-run":
+        from .agent import AgentConfig, run_once
+
+        client = None
+        if args.monolit:
+            from .monolit import MonolitClient
+
+            client = MonolitClient()
+        rec = run_once(AgentConfig(capital_usd=args.capital, use_monolit_edge=args.monolit), client=client, live=args.live)
+        print(json.dumps({k: rec[k] for k in ("ts", "risk_off", "n_target", "vetoes", "trades_planned", "live")}))
+        print(f"executed={len(rec['executed'])} blocked={len(rec['blocked'])} (dry-run={not args.live})")
+        return 0
+    if args.command == "track1-register":
+        from . import register as R
+
+        try:
+            win = R.registration_window()
+            print(f"registration window: {win}")
+            if args.address:
+                print(f"is_registered({args.address}): {R.is_registered(args.address)}")
+        except RuntimeError as e:
+            print(f"on-chain read needs web3: {e}")
+            print(f"contract: {R.COMPETITION_REGISTRY} (BSC) — install: pip install 'web3>=6'")
+        return 0
+
     if args.command == "demo":
         summary = AutoResearchLoop(FixtureDataSource(Path("data/sample_bnb_ohlcv.csv")), "BNB", 3, args.out).run()
         spec_path = save_cmc_skill_spec(summary, args.out / "cmc_strategy_skill.md", include_monolit=True)

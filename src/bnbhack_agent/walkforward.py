@@ -93,6 +93,75 @@ def _returns_for_params(price, p, *, flow_imbalance=None, cost_bps=10.0, regime_
     return strategy_returns(price, weights, cost_bps=cost_bps)
 
 
+def regime_ew_walk_forward(
+    price: pd.DataFrame,
+    *,
+    regime_ref: str = "BTC",
+    ma_grid: tuple[int, ...] = (168, 240, 336, 480, 672),
+    train_h: int = 24 * 21,
+    test_h: int = 24 * 7,
+    cost_bps: float = 10.0,
+    dd_cap: float = 0.30,
+) -> WalkForwardReport:
+    """Walk-forward the frozen strategy: regime-gated equal-weight.
+
+    The only hyperparameter is the regime MA window, selected on each TRAIN
+    window (best Sharpe subject to DD cap) and applied out-of-sample. Candidate
+    columns exclude the regime reference. This is the headline, anti-overfit
+    evaluation behind the live strategy.
+    """
+    cands = [c for c in price.columns if c != regime_ref]
+    sub = price[cands]
+    ref = price[regime_ref] if regime_ref in price.columns else None
+
+    def _ret(ma: int) -> pd.Series:
+        w = sub.notna().astype("float64")
+        w = w.div(w.sum(axis=1).replace(0, np.nan), axis=0).fillna(0.0)
+        if ref is not None:
+            w.loc[(ref < ref.rolling(ma).mean()).fillna(False)] = 0.0
+        return strategy_returns(sub, w, cost_bps=cost_bps)
+
+    ret_by_ma = {ma: _ret(ma) for ma in ma_grid}
+    ew_ret = strategy_returns(
+        sub, sub.notna().astype("float64").pipe(lambda w: w.div(w.sum(axis=1).replace(0, np.nan), axis=0).fillna(0.0)),
+        cost_bps=cost_bps,
+    )
+
+    n = len(price)
+    folds: list[FoldResult] = []
+    oos_segments, ins_returns = [], []
+    start = fold_no = 0
+    while start + train_h + test_h <= n:
+        tr = slice(start, start + train_h)
+        te = slice(start + train_h, start + train_h + test_h)
+        best_ma, best_key = ma_grid[0], (-1e9, -1e9)
+        for ma in ma_grid:
+            m = metrics_from_returns(ret_by_ma[ma].iloc[tr])
+            key = (0 if m.max_drawdown > dd_cap else 1, m.sharpe)
+            if key > best_key:
+                best_key, best_ma = key, ma
+        tr_m = metrics_from_returns(ret_by_ma[best_ma].iloc[tr])
+        te_m = metrics_from_returns(ret_by_ma[best_ma].iloc[te])
+        folds.append(FoldResult(fold_no, {"ma_window": best_ma}, tr_m.sharpe, tr_m.total_return, te_m.total_return, te_m.sharpe, te_m.max_drawdown))
+        oos_segments.append(ret_by_ma[best_ma].iloc[te])
+        ins_returns.append(tr_m.total_return)
+        start += test_h
+        fold_no += 1
+
+    oos_ret = pd.concat(oos_segments) if oos_segments else pd.Series(dtype="float64")
+    oos = metrics_from_returns(oos_ret)
+    baselines = {}
+    if len(oos_ret):
+        baselines["equal_weight"] = metrics_from_returns(ew_ret.loc[oos_ret.index])
+        if ref is not None:
+            baselines[f"{regime_ref}_hold"] = single_asset_baseline(price.loc[oos_ret.index], regime_ref)
+    return WalkForwardReport(
+        oos_equity=oos.equity, oos=oos, folds=folds, baselines=baselines,
+        insample_return_mean=float(np.mean(ins_returns)) if ins_returns else 0.0,
+        param_grid_size=len(ma_grid),
+    )
+
+
 def walk_forward(
     price: pd.DataFrame,
     *,

@@ -1,0 +1,60 @@
+{
+  "universe_size": 64,
+  "bars": 2880,
+  "span": [
+    "2026-02-16 16:00:00+00:00",
+    "2026-06-16 15:00:00+00:00"
+  ],
+  "strategy_oos": {
+    "total_return": 0.118648,
+    "sharpe": 1.4954,
+    "max_drawdown": 0.146746,
+    "turnover": 0.0,
+    "avg_exposure": 0.0,
+    "n_bars": 2352
+  },
+  "momentum_oos": {
+    "total_return": -0.631419,
+    "sharpe": -4.1377,
+    "max_drawdown": 0.677827,
+    "turnover": 0.0,
+    "avg_exposure": 0.0,
+    "n_bars": 2352
+  },
+  "baselines": {
+    "equal_weight": {
+      "total_return": 0.069727,
+      "sharpe": 0.7541,
+      "max_drawdown": 0.278534,
+      "turnover": 0.0,
+      "avg_exposure": 0.0,
+      "n_bars": 2352
+    },
+    "BTC_hold": {
+      "total_return": -0.024188,
+      "sharpe": -0.02,
+      "max_drawdown": 0.280248,
+      "turnover": 0.0,
+      "avg_exposure": 0.0,
+      "n_bars": 2352
+    }
+  },
+  "n_folds": 14,
+  "ma_picks": [
+    672,
+    672,
+    240,
+    240,
+    240,
+    240,
+    336,
+    336,
+    672,
+    672,
+    240,
+    240,
+    240,
+    336
+  ],
+  "insample_return_mean": 0.047695
+}
