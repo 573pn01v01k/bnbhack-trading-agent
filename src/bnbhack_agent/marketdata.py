@@ -126,6 +126,45 @@ def fetch_token_flow(client: "MonolitClient", token: "Token", *, hours: int) -> 
     return df.set_index("hour").sort_index()
 
 
+def taker_panel(client: "MonolitClient", coins: list[str], *, days: int = 120, venue: str = "binance",
+                use_cache: bool = True, chunk: int = 12) -> pd.DataFrame:
+    """Per-symbol hourly CEX taker-imbalance in [-1, 1] = (buy-sell)/(buy+sell).
+
+    Source: Monolit cex_mcp.coin_taker (liquid order-flow, far richer than BSC DEX
+    flow for this universe). Chunked to dodge the gateway's long-IN-list limit.
+    """
+    cache = CACHE / f"taker_{venue}_{days}d.parquet"
+    if use_cache and cache.exists():
+        df = pd.read_parquet(cache)
+        have = [c for c in coins if c in df.columns]
+        if have:
+            return df[have]
+    cols: dict[str, pd.Series] = {}
+    for i in range(0, len(coins), chunk):
+        batch = coins[i : i + chunk]
+        inlist = ",".join("'%s'" % s.replace("'", "") for s in batch)
+        sql = (
+            "SELECT utc_event_hour AS h, canonical_base AS coin, buy_volume AS bv, sell_volume AS sv "
+            f"FROM cex_mcp.coin_taker WHERE venue='{venue}' AND canonical_base IN ({inlist}) "
+            f"AND utc_event_hour > now() - INTERVAL {int(days)} DAY"
+        )
+        rows = client.query_cex_aggregates(sql)
+        if not rows:
+            continue
+        d = pd.DataFrame(rows)
+        d["h"] = pd.to_datetime(d["h"], utc=True)
+        d["imb"] = (d["bv"].astype(float) - d["sv"].astype(float)) / (d["bv"].astype(float) + d["sv"].astype(float))
+        for coin, g in d.groupby("coin"):
+            cols[coin] = g.set_index("h")["imb"].sort_index()
+    panel = pd.DataFrame(cols).sort_index()
+    if not panel.empty:
+        full = pd.date_range(panel.index.min(), panel.index.max(), freq="1h", tz="UTC")
+        panel = panel.reindex(full)
+    if use_cache and not panel.empty:
+        panel.to_parquet(cache)
+    return panel
+
+
 def flow_panel(client: "MonolitClient", tokens: list["Token"], *, days: int = 120,
                field: str = "net_vol", use_cache: bool = True) -> pd.DataFrame:
     """Per-symbol hourly on-chain flow `field` (default net_vol)."""

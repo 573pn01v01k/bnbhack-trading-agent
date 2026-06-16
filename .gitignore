@@ -11,3 +11,4 @@ dist/
 src/bnbhack_agent/data/runtime/
 scripts/*.log
 *.log
+scripts/*.log
