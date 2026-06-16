@@ -1,0 +1,78 @@
+{
+ "tested": {
+  "regime_ew_top5": {
+   "return": 0.1484,
+   "sharpe": 1.691,
+   "max_dd": 0.202,
+   "bars": 1848
+  },
+  "regime_ew_top8": {
+   "return": 0.0584,
+   "sharpe": 0.862,
+   "max_dd": 0.1772,
+   "bars": 1848
+  },
+  "regime_ew_top10": {
+   "return": 0.1175,
+   "sharpe": 1.541,
+   "max_dd": 0.1641,
+   "bars": 1848
+  },
+  "regime_ew_top15": {
+   "return": 0.1235,
+   "sharpe": 1.612,
+   "max_dd": 0.1564,
+   "bars": 1848
+  },
+  "regime_ew_top64": {
+   "return": 0.1147,
+   "sharpe": 1.655,
+   "max_dd": 0.1467,
+   "bars": 1848
+  },
+  "invvol_top15": {
+   "return": 0.058,
+   "sharpe": 1.022,
+   "max_dd": 0.1327,
+   "bars": 1848
+  },
+  "momo_riskon_top20": {
+   "return": 0.0682,
+   "sharpe": 0.827,
+   "max_dd": 0.3292,
+   "bars": 1848
+  },
+  "ew_breadth_top10": {
+   "return": -0.0923,
+   "sharpe": -1.113,
+   "max_dd": 0.1823,
+   "bars": 1848
+  },
+  "highvol_pit_top8": {
+   "return": -0.1476,
+   "sharpe": -1.134,
+   "max_dd": 0.2469,
+   "bars": 1848
+  },
+  "highvol_pit_top12": {
+   "return": 0.0642,
+   "sharpe": 0.892,
+   "max_dd": 0.1794,
+   "bars": 1848
+  },
+  "vol_expansion_top8": {
+   "return": 0.0203,
+   "sharpe": 0.451,
+   "max_dd": 0.2217,
+   "bars": 1848
+  }
+ },
+ "iterations": 1,
+ "best": {
+  "key": "regime_ew_top5",
+  "return": 0.1484,
+  "sharpe": 1.691,
+  "max_dd": 0.202,
+  "bars": 1848
+ }
+}
