@@ -118,3 +118,32 @@ def load_universe(path: Path | str = _DATA / "universe_bsc.json") -> list[Token]
 def tradeable_tokens(tokens: list[Token]) -> list[Token]:
     """Non-stable tokens with a price series — the rotation candidates."""
     return [t for t in tokens if t.tradeable and not t.is_stable]
+
+
+def liquidity_ranking(*, timeout: int = 30, use_cache: bool = True) -> dict[str, float]:
+    """Eligible symbol -> Binance 24h quote volume (USD). Cached to data/."""
+    cache = _DATA / "liquidity.json"
+    if use_cache and cache.exists():
+        return json.loads(cache.read_text())
+    url = "https://api.binance.com/api/v3/ticker/24hr"
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        data = json.loads(r.read().decode())
+    vol = {d["symbol"]: float(d.get("quoteVolume", 0)) for d in data}
+    out = {}
+    for sym in load_eligible_symbols():
+        out[sym] = vol.get(f"{sym}USDT", 0.0)
+    if use_cache:
+        cache.write_text(json.dumps(out, indent=1))
+    return out
+
+
+def liquid_candidates(present: list[str], n: int, *, use_cache: bool = True) -> list[str]:
+    """Top-`n` most-liquid eligible symbols that are present in `present`.
+
+    Concentration is the leaderboard lever: a smaller basket fattens the right
+    tail of weekly returns (validated) while the regime gate caps the downside.
+    """
+    rank = liquidity_ranking(use_cache=use_cache)
+    ranked = sorted([s for s in present if s in rank], key=lambda s: rank.get(s, 0.0), reverse=True)
+    return ranked[:n]

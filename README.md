@@ -17,12 +17,15 @@ Validated on **120 days of real hourly data** across **64 eligible BEP-20 tokens
 
 | Strategy (stitched OOS) | Return | Sharpe | Max DD |
 |---|---:|---:|---:|
-| **Regime-gated equal-weight (chosen)** | **+11.9%** | **1.50** | **14.7%** |
+| **Regime-gated EW, top-10 liquid (LIVE)** | **+16.5%** | **1.72** | **16.4%** |
+| Regime-gated EW, full 64 | +11.9% | 1.50 | 14.7% |
 | Equal-weight basket (baseline) | +7.0% | 0.75 | 27.9% |
 | BTC buy-and-hold | −2.4% | −0.02 | 28.0% |
 | Cross-sectional momentum | **−63%** (REJECTED — overfit) | −4.1 | 67.8% |
 
-The chosen strategy beats the basket on return, **doubles Sharpe, halves drawdown**, and sits well inside the 30% DQ gate. Naive momentum/reversal were tested under the same protocol and rejected for overfitting — the engine exposes that instead of hiding it. Reproduce: `python3 -m bnbhack_agent.cli track1-backtest`.
+Spot-only, no leverage. The strategy beats the basket on return, Sharpe, and drawdown, well inside the 30% DQ gate. Naive momentum/reversal/vol-concentration were tested under the same protocol and rejected — the engine exposes overfitting instead of hiding it.
+
+**Concentration is the leaderboard lever:** a winner-take-all 7-day contest rewards the right tail, not Sharpe. Shrinking the basket leaves expected return flat-to-up but fattens the weekly right tail (max 7-day return: **+14% at N=64 → +28% at N=5**, P(week >15%): 0% → 2.4%) while the regime gate keeps worst-case drawdown under the gate. Reproduce: `python3 -m bnbhack_agent.cli track1-backtest`.
 
 ## How it works
 

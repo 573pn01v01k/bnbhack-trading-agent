@@ -58,9 +58,14 @@ class AgentConfig:
     use_monolit_edge: bool = True
 
 
-def _candidates(price_cols) -> list[str]:
+def _candidates(price_cols, cfg: ST.StrategyConfig) -> list[str]:
+    """Concentrated basket: top-N most-liquid eligible tokens present in prices."""
     toks = U.tradeable_tokens(U.load_universe())
-    return [t.symbol for t in toks if t.symbol in price_cols]
+    present = [t.symbol for t in toks if t.symbol in price_cols]
+    try:
+        return U.liquid_candidates(present, cfg.max_positions)
+    except Exception:
+        return present[: cfg.max_positions]
 
 
 def decide(config: AgentConfig, client=None) -> dict:
@@ -68,7 +73,7 @@ def decide(config: AgentConfig, client=None) -> dict:
     cands_all = [t.symbol for t in U.tradeable_tokens(U.load_universe())]
     fetch = sorted(set(cands_all) | {config.cfg.regime_ref})
     price = MD.price_panel(fetch, days=config.history_days, use_cache=False)
-    candidates = _candidates(price.columns)
+    candidates = _candidates(price.columns, config.cfg)
 
     vetoes: set[str] = set()
     flow: dict[str, float] = {}

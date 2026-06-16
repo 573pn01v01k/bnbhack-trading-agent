@@ -63,11 +63,14 @@ def main(argv: list[str] | None = None) -> int:
         from .report import build_backtest_report
 
         s = build_backtest_report(days=args.days)
-        so, ew = s["strategy_oos"], s["baselines"].get("equal_weight", {})
+        co, so = s["concentrated_oos"], s["strategy_oos"]
+        ew = s["baselines"].get("equal_weight", {})
         print(f"universe={s['universe_size']} bars={s['bars']} folds={s['n_folds']}")
-        print(f"STRATEGY  OOS: return={so['total_return']:+.2%} sharpe={so['sharpe']:.2f} max_dd={so['max_drawdown']:.2%}")
-        print(f"baseline  OOS: return={ew.get('total_return',0):+.2%} sharpe={ew.get('sharpe',0):.2f} max_dd={ew.get('max_drawdown',0):.2%}")
-        print(f"momentum  OOS: return={s['momentum_oos']['total_return']:+.2%} (rejected, overfit)")
+        print(f"LIVE (top-{s['concentrated_n']} liquid) OOS: return={co['total_return']:+.2%} sharpe={co['sharpe']:.2f} max_dd={co['max_drawdown']:.2%}")
+        print(f"full universe          OOS: return={so['total_return']:+.2%} sharpe={so['sharpe']:.2f} max_dd={so['max_drawdown']:.2%}")
+        print(f"equal-weight baseline  OOS: return={ew.get('total_return',0):+.2%} sharpe={ew.get('sharpe',0):.2f} max_dd={ew.get('max_drawdown',0):.2%}")
+        tail = s["weekly_tail"]
+        print(f"weekly right tail: max7d full={tail.get('64',{}).get('max',0):+.1%} vs N=5={tail.get('5',{}).get('max',0):+.1%}")
         print("wrote docs/BACKTEST_RESULTS_TRACK1.md")
         return 0
     if args.command == "track1-run":

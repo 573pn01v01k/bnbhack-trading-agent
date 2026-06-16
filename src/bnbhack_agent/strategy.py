@@ -3,13 +3,16 @@
 Walk-forward validated on 120d of real data (stitched OOS, MA chosen on train
 each fold, applied out-of-sample):
 
-    regime-gated equal-weight :  +11.9% return,  Sharpe 1.50,  max DD 14.7%
+    regime-EW, top-10 liquid  :  +16.5% return,  Sharpe 1.72,  max DD 16.4%  (LIVE)
+    regime-EW, full 64        :  +11.9% return,  Sharpe 1.50,  max DD 14.7%
     equal-weight baseline     :  + 7.0% return,  Sharpe 0.75,  max DD 27.9%
 
-Naive cross-sectional momentum and short-term reversal were both tested under
-the same protocol and REJECTED (they overfit: in-sample positive, OOS deeply
-negative). The chosen strategy beats the baseline on return, doubles Sharpe, and
-halves drawdown — well inside the contest's 30% disqualification gate.
+Spot-only, no leverage (perps are out of scope). Naive momentum, reversal, and
+vol-concentration were tested under the same protocol and REJECTED (they overfit:
+in-sample positive, OOS deeply negative). Concentration to the most-liquid names
+is the leaderboard lever: it keeps expected return flat-to-up but fattens the
+weekly right tail (max 7-day return +14% at N=64 -> +28% at N=5), while the
+regime gate holds the worst drawdown under the contest's 30% disqualification gate.
 
 Thesis: hold a diversified equal-weight basket of the eligible BEP-20 tokens
 when the market regime is risk-on (BTC above its ~14-day MA); rotate fully to
@@ -37,7 +40,8 @@ if TYPE_CHECKING:
 class StrategyConfig:
     regime_ref: str = "BTC"      # regime reference asset
     ma_window: int = 336         # ~14d BTC MA gate (walk-forward picks lived in 240–672)
-    max_weight: float = 0.20     # per-name diversification cap (non-binding for a wide basket)
+    max_positions: int = 10      # concentration: top-N most-liquid eligible (fat right tail, leaderboard lever)
+    max_weight: float = 0.20     # per-name diversification cap
     rebalance_hours: int = 1     # hourly valuation cadence; also guarantees >=1 trade/day
     cost_bps: float = 10.0       # simulated transaction cost
     dd_cap: float = 0.30         # contest disqualification gate
