@@ -65,9 +65,27 @@
    "sharpe": 0.451,
    "max_dd": 0.2217,
    "bars": 1848
+  },
+  "ts_momentum": {
+   "return": -0.1005,
+   "sharpe": -1.265,
+   "max_dd": 0.1928,
+   "bars": 1848
+  },
+  "ts_momentum_top15": {
+   "return": -0.0829,
+   "sharpe": -0.836,
+   "max_dd": 0.2463,
+   "bars": 1848
+  },
+  "trend_scaled": {
+   "return": -0.0278,
+   "sharpe": -0.39,
+   "max_dd": 0.123,
+   "bars": 1848
   }
  },
- "iterations": 1,
+ "iterations": 2,
  "best": {
   "key": "regime_ew_top5",
   "return": 0.1484,

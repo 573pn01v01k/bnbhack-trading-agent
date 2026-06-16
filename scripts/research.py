@@ -115,6 +115,28 @@ def vol_expansion_returns(px, cols, ma, n=8, fast=24, slow=168, cost=10.0):
     return PF.strategy_returns(sub, w, cost_bps=cost)
 
 
+def ts_momentum_returns(px, cols, ma, own_ma=168, cost=10.0):
+    """Time-series momentum: hold each token only while ITS OWN price is above its own
+    MA (own-trend filter, known at t), equal-weight the qualifiers, market-regime-gated.
+    Classic, economically motivated, no cross-sectional ranking (less overfit-prone)."""
+    sub = px[cols]
+    own_up = (sub > sub.rolling(own_ma).mean()).astype("float64").where(sub.notna(), 0.0)
+    w = own_up.div(own_up.sum(axis=1).replace(0, np.nan), axis=0).fillna(0.0)
+    w.loc[regime_off(px, ma)] = 0.0
+    return PF.strategy_returns(sub, w, cost_bps=cost)
+
+
+def trend_scaled_returns(px, cols, ma, cost=10.0):
+    """Continuous exposure: scale the equal-weight basket by market breadth (fraction of
+    names above their MA) instead of a binary on/off gate. Smoother de-risking."""
+    sub = px[cols]
+    above = (sub > sub.rolling(ma).mean()).astype("float64")
+    breadth = (above.sum(axis=1) / sub.notna().sum(axis=1).replace(0, np.nan)).clip(0, 1)
+    base = sub.notna().astype("float64")
+    base = base.div(base.sum(axis=1).replace(0, np.nan), axis=0).fillna(0.0)
+    return PF.strategy_returns(sub, base.mul(breadth, axis=0), cost_bps=cost)
+
+
 def breadth_off(px, cols, ma):
     """Risk-off when fewer than half the basket trades above its own MA (breadth)."""
     sub = px[cols]
@@ -177,6 +199,12 @@ def batches(px, cand):
                                 for ma in (336, 480) for vw in (72, 168)}
     out["vol_expansion_top8"] = {(ma, f): vol_expansion_returns(px, cand, ma, 8, f, 168)
                                  for ma in (336, 480) for f in (12, 24, 48)}
+    # --- time-series momentum (own-trend filter) + continuous breadth-scaled exposure ---
+    out["ts_momentum"] = {(ma, own): ts_momentum_returns(px, cand, ma, own)
+                          for ma in (336, 480) for own in (96, 168, 336)}
+    out["ts_momentum_top15"] = {(ma, own): ts_momentum_returns(px, cand[:15], ma, own)
+                                for ma in (336, 480) for own in (96, 168, 336)}
+    out["trend_scaled"] = {ma: trend_scaled_returns(px, cand, ma) for ma in (96, 168, 336, 480)}
     return out
 
 
@@ -229,6 +257,12 @@ def _holdout_eval(key, holdout, cand):
         r = highvol_pit_returns(px, cand, 336, N, 168)
     elif key == "vol_expansion_top8":
         r = vol_expansion_returns(px, cand, 336, 8, 24, 168)
+    elif key == "ts_momentum":
+        r = ts_momentum_returns(px, cand, 336, 168)
+    elif key == "ts_momentum_top15":
+        r = ts_momentum_returns(px, cand[:15], 336, 168)
+    elif key == "trend_scaled":
+        r = trend_scaled_returns(px, cand, 336)
     elif key.startswith("regime_ew_top"):
         N = int(key.replace("regime_ew_top", "")); cols = cand[:N] if N < len(cand) else cand
         r = ew_returns(px, cols, 336)
