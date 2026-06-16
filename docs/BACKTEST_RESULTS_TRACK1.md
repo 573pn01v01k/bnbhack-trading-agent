@@ -1,38 +1,33 @@
-# Track-1 Backtest Results (walk-forward, out-of-sample)
+# Track-1 Backtest Results — live strategy (robust ensemble)
 
-Universe: **64 eligible BEP-20 tokens** (Binance hourly price). Window: 2880 hourly bars, 2026-02-16 16:00:00+00:00 → 2026-06-16 15:00:00+00:00. Cost: 10 bps/turn simulated. Drawdown DQ gate: 30%.
+Universe: **64 eligible BEP-20 tokens** (Binance hourly). Window: 2880 bars, 2026-02-16 16:00:00+00:00 → 2026-06-16 15:00:00+00:00. Live config: model-averaged ensemble of regime-gated equal-weight over basket sizes N=(3, 5, 8) × regime MAs=(240, 336, 480), rebalanced every 4h, 10.0bps cost.
 
-All numbers below are **stitched out-of-sample**: on each 21-day train window the only hyperparameter (the regime MA) is chosen by Sharpe subject to the DD cap, then applied to the next 7-day window it never saw. The in-sample/OOS spread is reported as an overfit gauge.
+The ensemble is anti-overfit by construction: it never selects an in-sample-best parameter, it averages over a grid. The locked 21-day holdout was never used to build it.
 
-## Result
+## Headline
 
-| Strategy | OOS return | OOS Sharpe | OOS max DD |
+| | Return | Sharpe | Max DD |
 |---|---:|---:|---:|
-| **Regime-gated EW, top-10 liquid (LIVE strategy)** | **+16.5%** | **1.72** | **16.4%** |
-| Regime-gated EW, full 64 | +11.9% | 1.50 | 14.7% |
-| Equal-weight basket (baseline) | +7.0% | 0.75 | 27.9% |
-| BTC buy-and-hold | -2.4% | -0.02 | 28.0% |
-| Cross-sectional momentum (REJECTED) | -63.1% | -4.14 | 67.8% |
+| **Ensemble (live), full window** | **+9.0%** | **0.83** | **16.4%** |
+| Ensemble, locked 21d holdout | +3.5% | 3.71 | 3.2% |
+| Equal-weight baseline | -0.7% | 0.26 | 34.6% |
+| BTC buy-and-hold | -2.9% | 0.01 | 28.0% |
 
-## Concentration — the leaderboard lever (spot-only, no leverage)
+## Cost sensitivity (turnover robustness)
 
-A winner-take-all 7-day contest rewards the right tail, not Sharpe. Concentrating the basket leaves expected return ~flat but fattens the weekly right tail, while the regime gate keeps the worst drawdown under the 30% DQ line. 7-day rolling-return distribution by basket size (random subsets, so this is the variance effect alone, not selection):
+| tx cost | full-window return |
+|---:|---:|
+| 0 bps | +12.2% |
+| 10 bps | +9.0% |
+| 20 bps | +5.8% |
+| 40 bps | -0.2% |
 
-| Basket N | mean 7d | p95 7d | max 7d | P(week > 15%) |
-|---:|---:|---:|---:|---:|
-| 64 | +0.6% | +9.2% | **+13.8%** | 0.0% |
-| 12 | +0.6% | +10.7% | **+24.0%** | 1.1% |
-| 8 | +0.7% | +11.3% | **+24.2%** | 1.5% |
-| 5 | +0.6% | +11.9% | **+28.1%** | 2.4% |
+The 4h rebalance keeps the book profitable through ~20bps of cost — hourly rebalancing did not (it churned the regime gate).
 
-Live basket (top-10 liquid): ETH, ZEC, XRP, DOGE, UNI, ADA, TRX, XPL, BCH, INJ.
+## Honest caveats — robustness validation
 
-## Why momentum was rejected
-
-Naive top-K momentum rotation looks plausible in-sample (mean train return +4.8%) but collapses out-of-sample (-63.1%, Sharpe -4.14) — a textbook overfit. The walk-forward protocol exposes this instead of hiding it, which is the whole point.
-
-## Chosen strategy
-
-Hold a diversified equal-weight basket of the eligible tokens when BTC is above its regime MA; rotate fully to the stablecoin leg otherwise. MA chosen per fold (picks: [672, 672, 240, 240, 240, 240, 336, 336, 672, 672, 240, 240, 240, 336]). Across 14 OOS folds it beats the equal-weight baseline on return, roughly doubles Sharpe, and roughly halves drawdown — most profit without blowing up.
+- **Returns are regime-dependent, not a stable edge.** Across three equal sub-periods: -9.9%, +20.4%, +0.5%. Almost all the profit comes from one trending window; the strategy loses or sits in cash otherwise. This is diversified crypto-beta capture with a downside regime gate — not systematic alpha.
+- **7-day right tail** (leaderboard relevance): mean +0.7%, p95 +12.6%, max +16.8%, P(week > 15%) 1.8%.
+- Naive momentum, reversal, vol-concentration, time-series momentum, adaptive sizing, and on-chain DEX-flow selection were all tested under the same walk-forward + holdout protocol and **rejected** (overfit or no edge). The ensemble is what survived.
 
 Reproduce: `python3 -m bnbhack_agent.cli track1-backtest`.

@@ -63,14 +63,13 @@ def main(argv: list[str] | None = None) -> int:
         from .report import build_backtest_report
 
         s = build_backtest_report(days=args.days)
-        co, so = s["concentrated_oos"], s["strategy_oos"]
-        ew = s["baselines"].get("equal_weight", {})
-        print(f"universe={s['universe_size']} bars={s['bars']} folds={s['n_folds']}")
-        print(f"LIVE (top-{s['concentrated_n']} liquid) OOS: return={co['total_return']:+.2%} sharpe={co['sharpe']:.2f} max_dd={co['max_drawdown']:.2%}")
-        print(f"full universe          OOS: return={so['total_return']:+.2%} sharpe={so['sharpe']:.2f} max_dd={so['max_drawdown']:.2%}")
-        print(f"equal-weight baseline  OOS: return={ew.get('total_return',0):+.2%} sharpe={ew.get('sharpe',0):.2f} max_dd={ew.get('max_drawdown',0):.2%}")
-        tail = s["weekly_tail"]
-        print(f"weekly right tail: max7d full={tail.get('64',{}).get('max',0):+.1%} vs N=5={tail.get('5',{}).get('max',0):+.1%}")
+        f, h, ew = s["full"], s["holdout"], s["baseline_ew"]
+        print(f"candidates={s['n_candidates']} bars={s['bars']} | ensemble {s['config']['ns']} x MA{s['config']['mas']} @ {s['config']['rebalance_hours']}h")
+        print(f"ENSEMBLE (live) full : return={f['return']:+.2%} sharpe={f['sharpe']:.2f} max_dd={f['max_dd']:.2%}")
+        print(f"ENSEMBLE holdout 21d : return={h['return']:+.2%} sharpe={h['sharpe']:.2f} max_dd={h['max_dd']:.2%}")
+        print(f"equal-weight baseline: return={ew['return']:+.2%} sharpe={ew['sharpe']:.2f}")
+        print(f"cost curve (full ret): " + " ".join(f"{c}bps={v:+.1%}" for c, v in s["cost_curve"].items()))
+        print(f"sub-period returns   : " + " / ".join(f"{v:+.1%}" for v in s["subperiods"]) + "  (regime-dependent)")
         print("wrote docs/BACKTEST_RESULTS_TRACK1.md")
         return 0
     if args.command == "track1-run":

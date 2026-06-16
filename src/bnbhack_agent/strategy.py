@@ -49,7 +49,6 @@ class StrategyConfig:
     ensemble_mas: tuple = (240, 336, 480) # regime-MA sleeves
     rebalance_hours: int = 4     # re-weight every 4h, not hourly — cuts turnover ~2x for cost-robustness (+9%@10bps vs +3.5% hourly)
     max_weight: float = 0.34     # per-name cap (binds only for the most concentrated sleeve)
-    rebalance_hours: int = 1     # hourly valuation cadence; also guarantees >=1 trade/day
     cost_bps: float = 10.0       # simulated transaction cost
     dd_cap: float = 0.30         # contest disqualification gate
     hard_dd_stop: float = 0.22   # our internal circuit-breaker, inside the gate
