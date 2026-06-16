@@ -47,6 +47,7 @@ class StrategyConfig:
     max_positions: int = 12      # liquid candidate pool the ensemble slices into top-N sleeves
     ensemble_ns: tuple = (3, 5, 8)        # basket-size sleeves (model averaging — robust, walk-forward+holdout validated)
     ensemble_mas: tuple = (240, 336, 480) # regime-MA sleeves
+    rebalance_hours: int = 4     # re-weight every 4h, not hourly — cuts turnover ~2x for cost-robustness (+9%@10bps vs +3.5% hourly)
     max_weight: float = 0.34     # per-name cap (binds only for the most concentrated sleeve)
     rebalance_hours: int = 1     # hourly valuation cadence; also guarantees >=1 trade/day
     cost_bps: float = 10.0       # simulated transaction cost
@@ -127,6 +128,11 @@ def ensemble_weights(price: pd.DataFrame, ranked_candidates: list[str], cfg: Str
                 regime_ref=cfg.regime_ref, ma_window=ma, max_weight=cfg.max_weight), vetoes=vetoes))
     cols = sorted(set().union(*[s.columns for s in sleeves]))
     acc = sum(s.reindex(columns=cols, fill_value=0.0) for s in sleeves) / len(sleeves)
+    # rebalance cadence: only re-set weights every `rebalance_hours` bars (hold between) to
+    # cut turnover — robustness validation showed hourly churn makes the book cost-fragile.
+    if cfg.rebalance_hours and cfg.rebalance_hours > 1 and len(acc) > cfg.rebalance_hours:
+        keep = (np.arange(len(acc)) % cfg.rebalance_hours) == 0
+        acc = acc.where(pd.Series(keep, index=acc.index), np.nan).ffill().fillna(0.0)
     return acc
 
 
