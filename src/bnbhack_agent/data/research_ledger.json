@@ -4,93 +4,212 @@
    "return": 0.1484,
    "sharpe": 1.691,
    "max_dd": 0.202,
-   "bars": 1848
+   "bars": 1848,
+   "holdout": {
+    "return": -0.0263,
+    "sharpe": -8.203,
+    "max_dd": 0.0263
+   }
   },
   "regime_ew_top8": {
    "return": 0.0584,
    "sharpe": 0.862,
    "max_dd": 0.1772,
-   "bars": 1848
+   "bars": 1848,
+   "holdout": {
+    "return": -0.0263,
+    "sharpe": -8.06,
+    "max_dd": 0.0263
+   }
   },
   "regime_ew_top10": {
    "return": 0.1175,
    "sharpe": 1.541,
    "max_dd": 0.1641,
-   "bars": 1848
+   "bars": 1848,
+   "holdout": {
+    "return": -0.026,
+    "sharpe": -8.333,
+    "max_dd": 0.026
+   }
   },
   "regime_ew_top15": {
    "return": 0.1235,
    "sharpe": 1.612,
    "max_dd": 0.1564,
-   "bars": 1848
+   "bars": 1848,
+   "holdout": {
+    "return": -0.0264,
+    "sharpe": -8.494,
+    "max_dd": 0.0264
+   }
   },
   "regime_ew_top64": {
    "return": 0.1147,
    "sharpe": 1.655,
    "max_dd": 0.1467,
-   "bars": 1848
+   "bars": 1848,
+   "holdout": {
+    "return": -0.0214,
+    "sharpe": -9.065,
+    "max_dd": 0.0214
+   }
   },
   "invvol_top15": {
    "return": 0.058,
    "sharpe": 1.022,
    "max_dd": 0.1327,
-   "bars": 1848
+   "bars": 1848,
+   "holdout": {
+    "return": -0.0209,
+    "sharpe": -9.029,
+    "max_dd": 0.0209
+   }
   },
   "momo_riskon_top20": {
    "return": 0.0682,
    "sharpe": 0.827,
    "max_dd": 0.3292,
-   "bars": 1848
+   "bars": 1848,
+   "holdout": {
+    "return": -0.0465,
+    "sharpe": -8.578,
+    "max_dd": 0.0465
+   }
   },
   "ew_breadth_top10": {
    "return": -0.0923,
    "sharpe": -1.113,
    "max_dd": 0.1823,
-   "bars": 1848
+   "bars": 1848,
+   "holdout": {
+    "return": 0.0178,
+    "sharpe": 1.192,
+    "max_dd": 0.0372
+   }
   },
   "highvol_pit_top8": {
    "return": -0.1476,
    "sharpe": -1.134,
    "max_dd": 0.2469,
-   "bars": 1848
+   "bars": 1848,
+   "holdout": {
+    "return": -0.0106,
+    "sharpe": -5.505,
+    "max_dd": 0.0106
+   }
   },
   "highvol_pit_top12": {
    "return": 0.0642,
    "sharpe": 0.892,
    "max_dd": 0.1794,
-   "bars": 1848
+   "bars": 1848,
+   "holdout": {
+    "return": -0.0173,
+    "sharpe": -8.306,
+    "max_dd": 0.0173
+   }
   },
   "vol_expansion_top8": {
    "return": 0.0203,
    "sharpe": 0.451,
    "max_dd": 0.2217,
-   "bars": 1848
+   "bars": 1848,
+   "holdout": {
+    "return": -0.0293,
+    "sharpe": -9.186,
+    "max_dd": 0.0293
+   }
   },
   "ts_momentum": {
    "return": -0.1005,
    "sharpe": -1.265,
    "max_dd": 0.1928,
-   "bars": 1848
+   "bars": 1848,
+   "holdout": {
+    "return": -0.0247,
+    "sharpe": -9.152,
+    "max_dd": 0.0247
+   }
   },
   "ts_momentum_top15": {
    "return": -0.0829,
    "sharpe": -0.836,
    "max_dd": 0.2463,
-   "bars": 1848
+   "bars": 1848,
+   "holdout": {
+    "return": -0.0264,
+    "sharpe": -8.647,
+    "max_dd": 0.0264
+   }
   },
   "trend_scaled": {
    "return": -0.0278,
    "sharpe": -0.39,
    "max_dd": 0.123,
-   "bars": 1848
+   "bars": 1848,
+   "holdout": {
+    "return": -0.052,
+    "sharpe": -5.705,
+    "max_dd": 0.0573
+   }
+  },
+  "adaptive_conc": {
+   "return": 0.0742,
+   "sharpe": 1.012,
+   "max_dd": 0.172,
+   "bars": 1848,
+   "holdout": {
+    "return": 0.0045,
+    "sharpe": 0.512,
+    "max_dd": 0.0399
+   }
+  },
+  "btc_scaled": {
+   "return": 0.0048,
+   "sharpe": 0.214,
+   "max_dd": 0.096,
+   "bars": 1848,
+   "holdout": {
+    "return": -0.0032,
+    "sharpe": -0.934,
+    "max_dd": 0.0165
+   }
+  },
+  "ensemble": {
+   "return": 0.1153,
+   "sharpe": 1.57,
+   "max_dd": 0.1655,
+   "bars": 1848,
+   "holdout": {
+    "return": 0.0196,
+    "sharpe": 2.25,
+    "max_dd": 0.0274
+   }
+  },
+  "ensemble_conc": {
+   "return": 0.15,
+   "sharpe": 1.818,
+   "max_dd": 0.1783,
+   "bars": 1848,
+   "holdout": {
+    "return": 0.0241,
+    "sharpe": 2.628,
+    "max_dd": 0.0313
+   }
   }
  },
- "iterations": 2,
+ "iterations": 1,
  "best": {
-  "key": "regime_ew_top5",
-  "return": 0.1484,
-  "sharpe": 1.691,
-  "max_dd": 0.202,
-  "bars": 1848
+  "key": "ensemble_conc",
+  "return": 0.15,
+  "sharpe": 1.818,
+  "max_dd": 0.1783,
+  "bars": 1848,
+  "holdout": {
+   "return": 0.0241,
+   "sharpe": 2.628,
+   "max_dd": 0.0313
+  }
  }
 }

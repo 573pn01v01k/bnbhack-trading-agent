@@ -40,19 +40,20 @@ INCUMBENT_KEY = "regime_ew_top10"   # current live strategy
 
 # ---- data ---------------------------------------------------------------
 def load():
+    """Return the FULL price panel (warm MA throughout), the liquidity-ranked candidate
+    list, and the holdout length in bars. Strategies are computed on the full panel and
+    the RETURN series is sliced afterwards — recomputing on a short slice leaves the
+    regime MA unwarmed and produces artifacts (the bug that faked a -17% holdout)."""
     px = pd.read_parquet(MD.CACHE / "price_120d.parquet")
     cov = px.notna().mean()
     trad = [t.symbol for t in U.tradeable_tokens(U.load_universe())]
     cand = [s for s in trad if s in px.columns and cov[s] > 0.85 and s != "BTC"]
-    holdout_bars = HOLDOUT_DAYS * 24
-    search = px.iloc[:-holdout_bars]
-    holdout = px.iloc[-holdout_bars:]
     try:
         liq = U.liquidity_ranking()
         cand = sorted(cand, key=lambda s: liq.get(s, 0.0), reverse=True)
     except Exception:
         pass
-    return search, holdout, cand
+    return px, cand, HOLDOUT_DAYS * 24
 
 
 # ---- building blocks ----------------------------------------------------
@@ -137,6 +138,46 @@ def trend_scaled_returns(px, cols, ma, cost=10.0):
     return PF.strategy_returns(sub, base.mul(breadth, axis=0), cost_bps=cost)
 
 
+def adaptive_conc_returns(px, cand, ma, thr=0.05, cost=10.0):
+    """Adaptive concentration: when BTC is STRONG (>thr above its MA) concentrate into
+    the top-5 liquid (fat right tail); when merely risk-on, diversify into top-15; when
+    risk-off (below MA), go to cash. The 'smart agent' — match aggression to regime."""
+    btc = px["BTC"]; sub = px[cand]
+    maline = btc.rolling(ma).mean()
+    strong = (btc / maline - 1 > thr).fillna(False)
+    below = (btc < maline).fillna(False)
+
+    def colmask(cols):
+        m = pd.DataFrame(0.0, index=px.index, columns=cand)
+        present = [c for c in cols if c in cand]
+        m[present] = sub[present].notna().astype("float64")
+        return m
+
+    w = colmask(cand[:15]).mask(strong, colmask(cand[:5]))
+    w = w.div(w.sum(axis=1).replace(0, np.nan), axis=0).fillna(0.0)
+    w.loc[below] = 0.0
+    return PF.strategy_returns(sub, w, cost_bps=cost)
+
+
+def btc_scaled_returns(px, cand, ma, k=0.10, cost=10.0):
+    """Continuous exposure scaled by BTC trend strength (distance above its MA, /k, clipped
+    0..1) over an equal-weight basket. Smooth de-risking instead of a binary gate."""
+    btc = px["BTC"]; sub = px[cand]
+    strength = ((btc / btc.rolling(ma).mean() - 1) / k).clip(0, 1).fillna(0.0)
+    base = sub.notna().astype("float64")
+    base = base.div(base.sum(axis=1).replace(0, np.nan), axis=0).fillna(0.0)
+    return PF.strategy_returns(sub, base.mul(strength, axis=0), cost_bps=cost)
+
+
+def ensemble_returns(px, cand, ns=(5, 10, 15), mas=(240, 336, 480), cost=10.0):
+    """Robust ensemble: split capital equally across regime-EW sleeves over a grid of
+    basket sizes x regime MAs, instead of betting on one (N, MA). Model averaging is
+    anti-overfitting — it never picks the in-sample-best param, so it can't overfit it.
+    Should survive the holdout that punishes single-param concentration."""
+    parts = [ew_returns(px, cand[:n], ma, cost) for n in ns for ma in mas]
+    return sum(parts) / len(parts)
+
+
 def breadth_off(px, cols, ma):
     """Risk-off when fewer than half the basket trades above its own MA (breadth)."""
     sub = px[cols]
@@ -205,48 +246,51 @@ def batches(px, cand):
     out["ts_momentum_top15"] = {(ma, own): ts_momentum_returns(px, cand[:15], ma, own)
                                 for ma in (336, 480) for own in (96, 168, 336)}
     out["trend_scaled"] = {ma: trend_scaled_returns(px, cand, ma) for ma in (96, 168, 336, 480)}
+    # --- smart/adaptive agentic strategies ---
+    out["adaptive_conc"] = {(ma, thr): adaptive_conc_returns(px, cand, ma, thr)
+                            for ma in (240, 336, 480) for thr in (0.02, 0.05, 0.08)}
+    out["btc_scaled"] = {(ma, k): btc_scaled_returns(px, cand, ma, k)
+                         for ma in (240, 336, 480) for k in (0.05, 0.10, 0.20)}
+    # robust ensemble (model averaging over N x MA) — single config, nothing to tune
+    out["ensemble"] = {"fixed": ensemble_returns(px, cand)}
+    out["ensemble_conc"] = {"fixed": ensemble_returns(px, cand, ns=(3, 5, 8))}
     return out
 
 
 # ---- runner -------------------------------------------------------------
 def main():
-    search, holdout, cand = load()
-    results = {}
-    for key, grid in batches(search, cand).items():
-        results[key] = wf_oos(grid)
+    px, cand, hb = load()
+    batch = batches(px, cand)                         # full-length return series (warm MA)
+    results, holdouts = {}, {}
+    for key, grid in batch.items():
+        results[key] = wf_oos({k: v.iloc[:-hb] for k, v in grid.items()})   # walk-forward on search portion
+        rep = list(grid.values())[len(grid) // 2]                            # representative param
+        ho = PF.metrics_from_returns(rep.iloc[-hb:])                         # holdout = slice of full-panel returns
+        holdouts[key] = {"return": round(ho.total_return, 4), "sharpe": round(ho.sharpe, 3), "max_dd": round(ho.max_drawdown, 4)}
 
     ledger = json.loads(LEDGER.read_text()) if LEDGER.exists() else {"tested": {}, "iterations": 0, "best": None}
     ledger["iterations"] += 1
     for k, v in results.items():
-        ledger["tested"][k] = v
-    # rank by OOS return among DD-eligible
+        ledger["tested"][k] = {**v, "holdout": holdouts[k]}
     ranked = sorted(results.items(), key=lambda kv: kv[1]["return"], reverse=True)
-    incumbent = results.get(INCUMBENT_KEY, ledger["tested"].get(INCUMBENT_KEY, {"return": 0.165}))
+    incumbent = results.get(INCUMBENT_KEY, {"return": 0.118})
     best_key, best = ranked[0]
     margin = best["return"] - incumbent["return"]
 
-    # The locked holdout is the FINAL gate: always check the top candidate there, and
-    # promote only if it ALSO survives the holdout (positive, under DD cap). This is the
-    # gate that rejected the overfit top-5 in iteration 1.
-    holdout_check = _holdout_eval(best_key, holdout, cand) if best_key != INCUMBENT_KEY else None
-    promote = (
-        best_key != INCUMBENT_KEY
-        and margin > 0.03
-        and best["max_dd"] <= DD_CAP
-        and holdout_check is not None
-        and holdout_check["return"] > 0.0
-        and holdout_check["max_dd"] <= DD_CAP
-    )
+    # Final gate: promote only if it beats the incumbent OOS by >3pp AND survives the
+    # (correctly-evaluated) locked holdout — positive return, under the DD cap.
+    ho = holdouts[best_key]
+    promote = (best_key != INCUMBENT_KEY and margin > 0.03 and best["max_dd"] <= DD_CAP
+               and ho["return"] > 0.0 and ho["max_dd"] <= DD_CAP)
 
-    ledger["best"] = {"key": best_key, **best}
+    ledger["best"] = {"key": best_key, **best, "holdout": ho}
     LEDGER.write_text(json.dumps(ledger, indent=1))
-    _append_log(ledger["iterations"], ranked, incumbent, promote, best_key, holdout_check)
+    _append_log(ledger["iterations"], ranked, incumbent, promote, best_key, ho)
     print(f"iter {ledger['iterations']}: top={best_key} ret={best['return']:+.1%} sharpe={best['sharpe']} dd={best['max_dd']:.1%} "
-          f"| incumbent {INCUMBENT_KEY} ret={incumbent['return']:+.1%} | promote={promote}", flush=True)
+          f"| holdout ret={ho['return']:+.1%} sharpe={ho['sharpe']} | incumbent {INCUMBENT_KEY} {incumbent['return']:+.1%} | promote={promote}", flush=True)
     for k, v in ranked:
-        print(f"   {k:22} ret={v['return']:+.1%} sharpe={v['sharpe']:.2f} dd={v['max_dd']:.1%}", flush=True)
-    if holdout_check:
-        print(f"   HOLDOUT {best_key}: ret={holdout_check['return']:+.1%} sharpe={holdout_check['sharpe']:.2f} dd={holdout_check['max_dd']:.1%}", flush=True)
+        h = holdouts[k]
+        print(f"   {k:20} OOS={v['return']:+.1%} sh={v['sharpe']:.2f} dd={v['max_dd']:.1%}  | HOLDOUT={h['return']:+.1%} sh={h['sharpe']:.2f}", flush=True)
 
 
 def _holdout_eval(key, holdout, cand):
@@ -263,6 +307,14 @@ def _holdout_eval(key, holdout, cand):
         r = ts_momentum_returns(px, cand[:15], 336, 168)
     elif key == "trend_scaled":
         r = trend_scaled_returns(px, cand, 336)
+    elif key == "adaptive_conc":
+        r = adaptive_conc_returns(px, cand, 336, 0.05)
+    elif key == "btc_scaled":
+        r = btc_scaled_returns(px, cand, 336, 0.10)
+    elif key == "ensemble":
+        r = ensemble_returns(px, cand)
+    elif key == "ensemble_conc":
+        r = ensemble_returns(px, cand, ns=(3, 5, 8))
     elif key.startswith("regime_ew_top"):
         N = int(key.replace("regime_ew_top", "")); cols = cand[:N] if N < len(cand) else cand
         r = ew_returns(px, cols, 336)

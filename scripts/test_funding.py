@@ -28,9 +28,8 @@ TICKERS = {  # coin -> Bybit linear ticker_id
     "KITE": 9847162, "LAB": 9169766, "MYX": 1734473, "NIGHT": 20805851, "RAVE": 23500439,
     "SAHARA": 2179, "SIREN": 2195, "STG": 2224, "TAG": 1059036, "XPL": 6205073, "ZEC": 2330,
 }
-DAYS = 120
-HOLDOUT_H = 21 * 24
-TRAIN_H, TEST_H, DD_CAP = 24 * 21, 24 * 7, 0.30
+DAYS = 21                       # 60d scans time out at the gateway; 21d reliably completes
+DD_CAP = 0.30
 
 
 def log(m):
@@ -50,24 +49,25 @@ def fetch_panels(client):
     fc = MD.CACHE / f"bybit_funding_{DAYS}d.parquet"
     if pc.exists() and fc.exists():
         return pd.read_parquet(pc), pd.read_parquet(fc)
-    log("fetching bybit hourly price + funding per ticker ...")
+    log("fetching bybit hourly price + funding per ticker (60d scoped, fast) ...")
     pcols, fcols = {}, {}
     for coin, tid in TICKERS.items():
+        # 4h-resolution, LIMIT-bounded -> stays inline (no artifact) and dodges the gateway scan timeout
         pr = _rows(client.call_tool("query_cex_trading_data", {"query":
-            f"SELECT toStartOfHour(open_time) AS h, argMax(close_price, open_time) AS c "
-            f"FROM cex.bybit_kline WHERE ticker_id={tid} AND open_time > now() - INTERVAL {DAYS} DAY GROUP BY h ORDER BY h"}))
+            f"SELECT open_time AS h, close_price AS c FROM cex.bybit_kline "
+            f"WHERE ticker_id={tid} AND toMinute(open_time)=0 AND (toHour(open_time) % 4)=0 "
+            f"ORDER BY open_time DESC LIMIT 170"}))
         if pr:
-            s = pd.Series({pd.to_datetime(r["h"], utc=True): float(r["c"]) for r in pr})
-            pcols[coin] = s
+            pcols[coin] = pd.Series({pd.to_datetime(r["h"], utc=True): float(r["c"]) for r in pr})
         fr = _rows(client.call_tool("query_cex_trading_data", {"query":
-            f"SELECT funding_rate_timestamp AS t, funding_rate AS f "
-            f"FROM cex.bybit_funding_rate WHERE ticker_id={tid} AND funding_rate_timestamp > now() - INTERVAL {DAYS} DAY ORDER BY t"}))
+            f"SELECT funding_rate_timestamp AS t, funding_rate AS f FROM cex.bybit_funding_rate "
+            f"WHERE ticker_id={tid} ORDER BY funding_rate_timestamp DESC LIMIT 90"}))
         if fr:
             fcols[coin] = pd.Series({pd.to_datetime(r["t"], utc=True): float(r["f"]) for r in fr})
         log(f"  {coin}: price={len(pr)} funding={len(fr)}")
     price = pd.DataFrame(pcols).sort_index()
-    full = pd.date_range(price.index.min(), price.index.max(), freq="1h", tz="UTC")
-    price = price.reindex(full).ffill(limit=3)
+    full = pd.date_range(price.index.min(), price.index.max(), freq="4h", tz="UTC")
+    price = price.reindex(full).ffill(limit=2)
     fund = pd.DataFrame(fcols).sort_index().reindex(price.index, method="ffill")
     price.to_parquet(pc); fund.to_parquet(fc)
     return price, fund
@@ -91,63 +91,43 @@ def main():
     log(f"degen universe: {price.shape[1]} coins, {price.shape[0]} hourly bars, "
         f"{price.index.min()}..{price.index.max()}")
 
-    # BTC regime from the Binance panel, aligned
-    btc = pd.read_parquet(MD.CACHE / "price_120d.parquet")["BTC"].reindex(price.index, method="ffill")
-    search = slice(0, len(price) - HOLDOUT_H)
+    fund = fund.reindex_like(price)
+    dfund = fund.diff(2)  # funding change over ~2 bars (~8h) — ignition proxy (4h grid)
 
-    # --- (1) information coefficient: does funding[t] predict forward return? ---
-    for H in (8, 24, 72):
-        fwd = price.shift(-H) / price - 1.0
-        f = fund.reindex_like(price)
-        # pooled Spearman-ish via rank corr per bar then average
-        ics = []
-        for ts in price.index[::24]:  # sample daily to keep it cheap
-            a, b = f.loc[ts], fwd.loc[ts]
-            d = pd.concat([a, b], axis=1).dropna()
-            if len(d) >= 5:
-                ics.append(d.iloc[:, 0].corr(d.iloc[:, 1], method="spearman"))
-        ic = float(np.nanmean(ics)) if ics else float("nan")
-        log(f"  IC(funding -> {H}h fwd return): {ic:+.3f}  (n_bars={len(ics)})")
+    # --- Q: does funding (or its change) LEAD price moves? Information coefficient. ---
+    log("  --- information coefficient (Spearman, pooled cross-section per bar; 4h grid) ---")
+    for hours, bars in ((8, 2), (24, 6), (72, 18)):
+        fwd = price.shift(-bars) / price - 1.0
+        for name, sigp in (("funding ", fund), ("d_funding", dfund)):
+            ics = []
+            for ts in price.index[::3]:
+                d = pd.concat([sigp.loc[ts], fwd.loc[ts]], axis=1).dropna()
+                if len(d) >= 5:
+                    ics.append(d.iloc[:, 0].corr(d.iloc[:, 1], method="spearman"))
+            ic = float(np.nanmean(ics)) if ics else float("nan")
+            log(f"  IC({name} -> {hours:2}h fwd return): {ic:+.3f}  (n_bars={len(ics)})")
 
-    # --- (2) backtests: funding-based selection, regime-gated, walk-forward OOS + holdout ---
-    def regime_off(ma): return (btc < btc.rolling(ma).mean()).fillna(False)
-
-    def sel_returns(score, k, ma, cost=10.0):
-        valid = price.notna() & score.notna()
-        rank = score.where(valid).rank(axis=1, ascending=False, method="first")
-        w = (rank <= k).astype("float64")
-        w = w.div(w.sum(axis=1).replace(0, np.nan), axis=0).fillna(0.0)
-        w.loc[regime_off(ma)] = 0.0
-        return PF.strategy_returns(price, w, cost_bps=cost)
-
-    fsm = fund.rolling(3, min_periods=1).mean()                 # smoothed funding (known at t)
-    dfund = fund.diff(3)                                        # funding change (ignition proxy)
-    families = {
-        "degen_ew": {ma: sel_returns(price.notna().astype(float), 99, ma) for ma in (240, 336, 480)},
-        "fund_high": {(k, ma): sel_returns(fsm, k, ma) for k in (3, 5, 8) for ma in (240, 336, 480)},
-        "fund_low": {(k, ma): sel_returns(-fsm, k, ma) for k in (3, 5, 8) for ma in (240, 336, 480)},
-        "fund_rising": {(k, ma): sel_returns(dfund, k, ma) for k in (3, 5, 8) for ma in (240, 336, 480)},
-    }
-    log("  --- funding-selection backtests (search-window walk-forward OOS) ---")
-    res = {}
-    for name, grid in families.items():
-        s = {k: v.iloc[search] for k, v in grid.items()}
-        o = wf_oos(s)
-        res[name] = o
-        if o:
-            log(f"  {name:12} OOS: ret={o.total_return:+.1%} sharpe={o.sharpe:.2f} dd={o.max_drawdown:.1%}")
-    # holdout check on the best
-    best = max((k for k in res if res[k]), key=lambda k: res[k].total_return)
-    grid = families[best]
-    hold = {k: v.iloc[len(price) - HOLDOUT_H:] for k, v in grid.items()}
-    ho = wf_oos(hold) if len(price) - HOLDOUT_H > TRAIN_H + TEST_H else None
-    if ho:
-        log(f"  HOLDOUT {best}: ret={ho.total_return:+.1%} sharpe={ho.sharpe:.2f} dd={ho.max_drawdown:.1%}")
-    else:
-        # holdout too short for a fold; report full-holdout single-param at sensible setting
-        hp = list(families[best].values())[len(families[best]) // 2].iloc[len(price) - HOLDOUT_H:]
-        m = PF.metrics_from_returns(hp)
-        log(f"  HOLDOUT(full) {best}: ret={m.total_return:+.1%} sharpe={m.sharpe:.2f} dd={m.max_drawdown:.1%}")
+    # --- tercile: bucket every (token,bar) by funding; mean forward ~24h return per bucket ---
+    fwd24 = price.shift(-6) / price - 1.0
+    obs = pd.DataFrame({"f": fund.stack(), "r": fwd24.stack()}).dropna()
+    log(f"  --- tercile forward-24h return by funding level (n={len(obs)}) ---")
+    if len(obs) > 100:
+        obs["b"] = pd.qcut(obs["f"], 3, labels=["low_funding", "mid", "high_funding"], duplicates="drop")
+        g = obs.groupby("b", observed=True)["r"].mean()
+        for k, v in g.items():
+            log(f"    {k:13}: {v:+.3%}")
+        if "high_funding" in g and "low_funding" in g:
+            log(f"  high-minus-low funding -> fwd24 spread: {g['high_funding'] - g['low_funding']:+.3%}")
+    # same for funding CHANGE (rising funding = building long pressure = ignition?)
+    obs2 = pd.DataFrame({"df": dfund.stack(), "r": fwd24.stack()}).dropna()
+    if len(obs2) > 100:
+        obs2["b"] = pd.qcut(obs2["df"], 3, labels=["falling", "flat", "rising"], duplicates="drop")
+        g2 = obs2.groupby("b", observed=True)["r"].mean()
+        log("  --- fwd24 by funding CHANGE ---")
+        for k, v in g2.items():
+            log(f"    {k:13}: {v:+.3%}")
+        if "rising" in g2 and "falling" in g2:
+            log(f"  rising-minus-falling d_funding -> fwd24 spread: {g2['rising'] - g2['falling']:+.3%}")
     log("DONE")
 
 
