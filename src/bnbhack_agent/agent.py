@@ -55,7 +55,31 @@ class AgentConfig:
     cfg: ST.StrategyConfig = field(default_factory=lambda: ST.StrategyConfig())
     caps: RiskCaps = field(default_factory=RiskCaps)
     min_trade_usd: float = 5.0             # skip dust trades
-    use_monolit_edge: bool = True
+    use_monolit_edge: bool = True          # Monolit security screening (cached daily)
+    use_flow: bool = False                 # per-cycle on-chain flow tilt — off by default (slow + marginal)
+    security_ttl_h: int = 24               # re-check token security at most once/day
+
+
+SECURITY_CACHE = STATE_DIR / "security_vetoes.json"
+
+
+def _security_vetoes_cached(client, tokens, *, ttl_h: int = 24) -> set[str]:
+    """Honeypot/high-tax screening is ~static, so cache it: re-check at most once per
+    ttl_h. Keeps the data-moat (Monolit token security) off the hot decision path."""
+    now = time.time()
+    if SECURITY_CACHE.exists():
+        try:
+            c = json.loads(SECURITY_CACHE.read_text())
+            if now - c.get("ts", 0) < ttl_h * 3600:
+                return set(c.get("vetoes", []))
+        except Exception:
+            pass
+    try:
+        vetoes = ST.security_vetoes(client, tokens)
+    except Exception:
+        vetoes = set()
+    SECURITY_CACHE.write_text(json.dumps({"ts": now, "vetoes": sorted(vetoes)}))
+    return vetoes
 
 
 def _candidates(price_cols, cfg: ST.StrategyConfig) -> list[str]:
@@ -79,14 +103,12 @@ def decide(config: AgentConfig, client=None) -> dict:
     flow: dict[str, float] = {}
     if config.use_monolit_edge and client is not None:
         toks = [t for t in U.tradeable_tokens(U.load_universe()) if t.symbol in candidates and t.bsc_contract]
-        try:
-            vetoes = ST.security_vetoes(client, toks)
-        except Exception:
-            vetoes = set()
-        try:
-            flow = ST.flow_tilt(client, {t.symbol: t.bsc_contract for t in toks})
-        except Exception:
-            flow = {}
+        vetoes = _security_vetoes_cached(client, toks, ttl_h=config.security_ttl_h)
+        if config.use_flow:
+            try:
+                flow = ST.flow_tilt(client, {t.symbol: t.bsc_contract for t in toks}, max_checks=len(toks))
+            except Exception:
+                flow = {}
 
     alloc = ST.live_ensemble_allocation(price, candidates, config.cfg, vetoes=vetoes)
     alloc["vetoes"] = sorted(vetoes)
