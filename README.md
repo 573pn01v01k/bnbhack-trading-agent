@@ -11,30 +11,29 @@ self-custody mode. It pays for its data keyless, per request, via **x402**.
 
 > Full design: [`docs/superpowers/specs/2026-06-16-bnbhack-trading-agent-design.md`](docs/superpowers/specs/2026-06-16-bnbhack-trading-agent-design.md)
 
-## Result (walk-forward, out-of-sample — full report in `docs/BACKTEST_RESULTS_TRACK1.md`)
+## Result (full report in `docs/BACKTEST_RESULTS_TRACK1.md`)
 
-Validated on **120 days of real hourly data** across **64 eligible BEP-20 tokens**. Every number is stitched out-of-sample (the only hyperparameter, the regime MA, is chosen on each train window and applied to the next unseen window):
+Validated on **120 days of real hourly data** across **64 eligible BEP-20 tokens**, with a locked 21-day holdout never used to build the strategy.
 
-| Strategy (stitched OOS) | Return | Sharpe | Max DD |
+| Strategy (live config) | Return | Sharpe | Max DD |
 |---|---:|---:|---:|
-| **Regime-gated EW, top-10 liquid (LIVE)** | **+16.5%** | **1.72** | **16.4%** |
-| Regime-gated EW, full 64 | +11.9% | 1.50 | 14.7% |
-| Equal-weight basket (baseline) | +7.0% | 0.75 | 27.9% |
-| BTC buy-and-hold | −2.4% | −0.02 | 28.0% |
-| Cross-sectional momentum | **−63%** (REJECTED — overfit) | −4.1 | 67.8% |
+| **Ensemble — full window** | **+9.0%** | 0.83 | 16.4% |
+| Ensemble — locked 21d holdout | +3.5% | 3.71 | 3.2% |
+| Equal-weight baseline | −0.7% | 0.26 | — |
+| BTC buy-and-hold | −2.4% | — | 28% |
 
-Spot-only, no leverage. The strategy beats the basket on return, Sharpe, and drawdown, well inside the 30% DQ gate. Naive momentum/reversal/vol-concentration were tested under the same protocol and rejected — the engine exposes overfitting instead of hiding it.
+The live strategy is a **model-averaged ensemble**: regime-gated equal-weight over a grid of basket sizes (N=3/5/8 most-liquid) × regime MAs (240/336/480h), rebalanced every 4h. Model-averaging is anti-overfitting by construction — it never bets on one in-sample-best parameter — and it's the only high-return config that also survives the holdout. **Cost-robust to ~20 bps** (+5.8% at 20bps; the 4h rebalance halves turnover vs hourly).
 
-**Concentration is the leaderboard lever:** a winner-take-all 7-day contest rewards the right tail, not Sharpe. Shrinking the basket leaves expected return flat-to-up but fattens the weekly right tail (max 7-day return: **+14% at N=64 → +28% at N=5**, P(week >15%): 0% → 2.4%) while the regime gate keeps worst-case drawdown under the gate. Reproduce: `python3 -m bnbhack_agent.cli track1-backtest`.
+**Honest caveats** (from full robustness validation): returns are **regime-dependent** (−10% / +20% / +0% across three sub-periods) — this is diversified crypto-beta capture with a downside regime gate, *not* a stable systematic edge. Naive momentum, reversal, vol-concentration, time-series momentum, adaptive sizing, and on-chain DEX-flow selection were all tested under the same walk-forward + holdout protocol and **rejected**; the ensemble is what survived. Reproduce: `python3 -m bnbhack_agent.cli track1-backtest`.
 
 ## How it works
 
-- **Strategy** (`strategy.py`): hold a diversified equal-weight basket of the eligible tokens when BTC is risk-on (above its ~14-day MA); rotate fully to the stablecoin leg otherwise. Same function drives backtest and live (decision parity).
-- **Data moat** (`monolit.py`): live Monolit MCP client — on-chain BSC swap flow (`evm.swap_events`), CEX derivatives, token security — used as a live veto/tilt competitors using CMC-only do not have.
-- **Engine** (`marketdata.py`, `signals.py`, `portfolio.py`, `walkforward.py`): cached price/flow panels, no-lookahead simulator, walk-forward OOS evaluation vs baselines.
-- **Execution** (`execution.py`): Trust Wallet Agent Kit in self-custody — `twak swap --chain bsc`, x402-paid data, `automate` cadence, `serve --watch` for unattended signing. Risk caps gate every trade (drawdown stop inside the 30% gate, per-trade/daily limits, slippage).
+- **Strategy** (`strategy.py`): the robust model-averaged ensemble above. Hold the basket when BTC is risk-on (above its regime MA), rotate to the stablecoin leg otherwise. The same function drives backtest and live (decision parity).
+- **Data layer** (`monolit.py`): live Monolit MCP client — on-chain BSC swap flow (`evm.swap_events`), CEX derivatives/funding (Bybit + 14-venue), token security. Extensively explored; for the liquid-eligible universe the systematic edge came from regime-gated diversification (on-chain DEX flow is thin for these CEX-traded majors). Token-security screening runs as a cached daily veto, off the hot decision path.
+- **Engine** (`marketdata.py`, `portfolio.py`, `walkforward.py`, `scripts/research.py`, `scripts/robustness.py`): cached price panels, no-lookahead simulator, walk-forward OOS + locked-holdout evaluation, and an auto-research ledger that records every hypothesis tested (the multiple-comparison budget).
+- **Execution** (`execution.py`): Trust Wallet Agent Kit in self-custody — `twak swap --chain bsc`, x402-paid data, `serve --watch` for unattended signing. Risk caps gate every trade (drawdown stop inside the 30% gate, per-trade/daily limits, slippage).
+- **Agent** (`agent.py`): 4-hourly decision (~74s) → risk-gated trade plan → self-custody execution → structured decision log. Edge degrades gracefully (best-effort, never blocks).
 - **Registration** (`register.py`): the BSC `CompetitionRegistry` (optional `web3` extra).
-- **Agent** (`agent.py`): hourly decision → risk-gated trade plan → self-custody execution → structured decision log.
 
 `cmc_skill.py` (a Track‑2 Strategy Skill exporter) is carried over but is not part of this Track‑1 submission. Tests: **70 passing**.
 
