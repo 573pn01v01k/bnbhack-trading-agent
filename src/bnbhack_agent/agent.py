@@ -88,7 +88,7 @@ def decide(config: AgentConfig, client=None) -> dict:
         except Exception:
             flow = {}
 
-    alloc = ST.live_allocation(price, candidates, config.cfg, vetoes=vetoes)
+    alloc = ST.live_ensemble_allocation(price, candidates, config.cfg, vetoes=vetoes)
     alloc["vetoes"] = sorted(vetoes)
     alloc["flow_imbalance"] = {k: round(v, 3) for k, v in flow.items()}
     return alloc
@@ -148,7 +148,7 @@ def run_once(config: AgentConfig | None = None, client=None, *, live: bool = Fal
     record = {
         "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "as_of": alloc["as_of"],
-        "risk_off": alloc["risk_off"],
+        "risk_off": alloc.get("risk_off_fraction", alloc.get("risk_off")),
         "n_target": len(alloc["weights"]),
         "vetoes": alloc.get("vetoes", []),
         "drawdown": round(drawdown, 4),

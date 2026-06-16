@@ -35,7 +35,7 @@ TEST_H = 24 * 7
 DD_CAP = 0.30
 LEDGER = ROOT / "src" / "bnbhack_agent" / "data" / "research_ledger.json"
 LOG = ROOT / "docs" / "RESEARCH_LOG.md"
-INCUMBENT_KEY = "regime_ew_top10"   # current live strategy
+INCUMBENT_KEY = "ensemble_conc"   # current live strategy (robust model-averaged ensemble)
 
 
 # ---- data ---------------------------------------------------------------
