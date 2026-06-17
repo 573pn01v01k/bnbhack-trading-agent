@@ -20,7 +20,24 @@ def _source(name: str, data_path: Path, count: int):
     raise ValueError(f"unknown source: {name}")
 
 
+def _load_dotenv(path: str = ".env") -> None:
+    """Load KEY=VALUE lines from a local .env (gitignored) into the environment, without
+    overriding already-set vars. Keeps secrets (CMC_PRO_API_KEY, MONOLIT_API_KEY, ...) out
+    of the code and the command line."""
+    p = Path(path)
+    if not p.exists():
+        return
+    import os
+
+    for line in p.read_text().splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            k, v = line.split("=", 1)
+            os.environ.setdefault(k.strip(), v.strip())
+
+
 def main(argv: list[str] | None = None) -> int:
+    _load_dotenv()
     parser = argparse.ArgumentParser(description="BNB Hack AutoResearch strategy agent")
     sub = parser.add_subparsers(dest="command", required=True)
 
