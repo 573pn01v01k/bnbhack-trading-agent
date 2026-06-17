@@ -48,6 +48,8 @@ Honest read: the **median week is ~flat** — the full-window figure above is co
 
 The gap between the 10 bps line and the per-name line is exactly the cost the earlier report hid. Honest numbers, not the flattering ones.
 
+Note the headline is **conservative**: the per-name cost charges the measured price impact of a **$200** trade, but a $500 book trades only ~$125 per name. On an AMM price impact scales ~linearly with size (only the 25 bps LP fee is fixed), so realized cost is lower and the live PnL is biased **above** the headline. We report the conservative floor, not the favorable estimate.
+
 ## Honest caveats — robustness validation
 
 - **Returns are regime-dependent, not a stable edge.** Across three equal sub-periods: -13.7%, +23.5%, -2.1%. This is diversified crypto-beta capture with a downside regime gate + circuit-breakers — not systematic alpha.
