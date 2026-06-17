@@ -36,6 +36,7 @@ STABLE = "USDT"  # routing/quote leg
 class AgentState:
     equity_peak: float = 0.0
     last_trade_day: str = ""
+    last_trade_ts: float = 0.0                     # epoch seconds of last executed trade (heartbeat)
     holdings: dict = field(default_factory=dict)   # symbol -> USD value (model)
 
     @classmethod
@@ -55,6 +56,7 @@ class AgentConfig:
     cfg: ST.StrategyConfig = field(default_factory=lambda: ST.StrategyConfig())
     caps: RiskCaps = field(default_factory=RiskCaps)
     min_trade_usd: float = 5.0             # skip dust trades
+    heartbeat_hours: int = 20              # force a tiny trade if idle this long -> guarantees >=1 trade/day
     use_monolit_edge: bool = True          # Monolit security screening (cached daily)
     use_flow: bool = False                 # per-cycle on-chain flow tilt — off by default (slow + marginal)
     security_ttl_h: int = 24               # re-check token security at most once/day
@@ -166,6 +168,20 @@ def run_once(config: AgentConfig | None = None, client=None, *, live: bool = Fal
             else:
                 state.holdings[t["symbol"]] = max(0.0, state.holdings.get(t["symbol"], 0.0) - t["usd"])
 
+    # Heartbeat: guarantee the contest's >=1-trade/day rule in ANY regime (even fully
+    # risk-off with no moonshot movers). If nothing traded and we've been idle too long,
+    # do a tiny stable rotation — counts as a trade, ~zero PnL.
+    now_ts = time.time()
+    heartbeat = False
+    if executed:
+        state.last_trade_ts = now_ts
+    elif now_ts - state.last_trade_ts > config.heartbeat_hours * 3600:
+        cmd = twak.execute_swap(config.min_trade_usd, STABLE, "USDC", chain="bsc", dry_run=not live)
+        executed.append({"side": "heartbeat", "symbol": "USDC", "usd": config.min_trade_usd,
+                         "from": STABLE, "to": "USDC", "twak_cmd": cmd if not live else "submitted", "heartbeat": True})
+        state.last_trade_ts = now_ts
+        heartbeat = True
+
     day = time.strftime("%Y-%m-%d", time.gmtime())
     record = {
         "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -177,6 +193,7 @@ def run_once(config: AgentConfig | None = None, client=None, *, live: bool = Fal
         "trades_planned": len(trades),
         "executed": executed,
         "blocked": blocked,
+        "heartbeat": heartbeat,
         "live": live,
     }
     with LOG_FILE.open("a") as fh:

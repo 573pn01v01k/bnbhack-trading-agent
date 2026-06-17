@@ -47,8 +47,13 @@ class StrategyConfig:
     max_positions: int = 12      # liquid candidate pool the ensemble slices into top-N sleeves
     ensemble_ns: tuple = (3, 5, 8)        # basket-size sleeves (model averaging — robust, walk-forward+holdout validated)
     ensemble_mas: tuple = (240, 336, 480) # regime-MA sleeves
-    rebalance_hours: int = 4     # re-weight every 4h, not hourly — cuts turnover ~2x for cost-robustness (+9%@10bps vs +3.5% hourly)
+    rebalance_hours: int = 4     # main sleeve re-weights every 4h (cost-robust)
     max_weight: float = 0.34     # per-name cap (binds only for the most concentrated sleeve)
+    # --- moonshot sleeve: capped lottery that fills idle cash (risk-off optionality + daily heartbeat) ---
+    moonshot_frac: float = 0.10  # max fraction of capital in moonshots (bounded downside; "less size")
+    moonshot_k: int = 3          # how many movers to hold
+    moonshot_lookback: int = 12  # trailing hours used to pick "what's starting to move"
+    moonshot_rebalance: int = 4  # moonshot re-weights every 4h (frequent rotation -> trades daily)
     cost_bps: float = 10.0       # simulated transaction cost
     dd_cap: float = 0.30         # contest disqualification gate
     hard_dd_stop: float = 0.22   # our internal circuit-breaker, inside the gate
@@ -135,10 +140,44 @@ def ensemble_weights(price: pd.DataFrame, ranked_candidates: list[str], cfg: Str
     return acc
 
 
+def moonshot_weights(price: pd.DataFrame, candidates: list[str], cfg: StrategyConfig = FROZEN) -> pd.DataFrame:
+    """Small lottery sleeve: hold the top-k eligible tokens by short-term trailing return
+    (names that are starting to move), equal-weight, rotated every `moonshot_rebalance` h.
+    Negative-to-flat expected value BY DESIGN — it's a capped convex bet for the right tail,
+    and its frequent rotation keeps the agent trading (>=1/day) when the main book is in cash.
+    Point-in-time (trailing return known at t — no lookahead)."""
+    sub = price[[c for c in candidates if c in price.columns]]
+    mom = sub.pct_change(cfg.moonshot_lookback)
+    rank = mom.rank(axis=1, ascending=False, method="first")
+    w = ((rank <= cfg.moonshot_k) & sub.notna() & (mom > 0)).astype("float64")  # only chase positive movers
+    w = w.div(w.sum(axis=1).replace(0, np.nan), axis=0).fillna(0.0)
+    rb = cfg.moonshot_rebalance
+    if rb and rb > 1 and len(w) > rb:
+        keep = (np.arange(len(w)) % rb) == 0
+        w = w.where(pd.Series(keep, index=w.index), np.nan).ffill().fillna(0.0)
+    return w
+
+
+def combined_weights(price: pd.DataFrame, ranked_candidates: list[str], cfg: StrategyConfig = FROZEN,
+                     *, vetoes: set[str] | None = None) -> pd.DataFrame:
+    """Live target weights: the validated main ensemble PLUS a capped moonshot sleeve that
+    fills idle cash. In risk-on the book is mostly the ensemble; in risk-off (ensemble in
+    cash) up to `moonshot_frac` is deployed into frequent small moonshot bets — bounded
+    downside, right-tail upside, and guaranteed trading activity in any regime."""
+    main = ensemble_weights(price, ranked_candidates, cfg, vetoes=vetoes)
+    moon = moonshot_weights(price, ranked_candidates, cfg)
+    cash = (1.0 - main.sum(axis=1)).clip(lower=0.0)
+    alloc = cash.clip(upper=cfg.moonshot_frac)              # only ever use idle cash, capped
+    cols = sorted(set(main.columns) | set(moon.columns))
+    main = main.reindex(columns=cols, fill_value=0.0)
+    moon = moon.reindex(columns=cols, fill_value=0.0)
+    return main.add(moon.mul(alloc, axis=0), fill_value=0.0)
+
+
 def live_ensemble_allocation(price: pd.DataFrame, ranked_candidates: list[str], cfg: StrategyConfig = FROZEN,
                              *, vetoes: set[str] | None = None) -> dict:
-    """Latest-bar target allocation for the robust ensemble (the live strategy)."""
-    w = ensemble_weights(price, ranked_candidates, cfg, vetoes=vetoes)
+    """Latest-bar target allocation for the live strategy (ensemble + moonshot sleeve)."""
+    w = combined_weights(price, ranked_candidates, cfg, vetoes=vetoes)
     last = w.iloc[-1]
     held = {s: round(float(v), 5) for s, v in last.items() if v > 1e-9}
     # any sleeve risk-on -> not fully cash; report the consensus
