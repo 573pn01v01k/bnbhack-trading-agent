@@ -1,15 +1,352 @@
 {
- "_note": "Measured BSC PancakeSwap DEX liquidity (weekly USD volume + ~$200 price impact) from the red-team on-chain scan (evm.swap_events, chain=bsc). This is the EXECUTABLE universe — the agent trades spot on PancakeSwap via TWAK, NOT on Binance. Refresh point-in-time before the contest with universe.refresh_dex_liquidity(client). Names not listed have ~no BSC DEX liquidity (TON/XAUT have no BSC contract at all).",
+ "_note": "Rebuilt from full 14d BSC swap_events scan (scripts/scan_dex_liquidity.py). weekly_usd = stable_leg_14d/2 (USDT+WBNB leg, conservative lower bound for WBNB-routed names). impact_bps_200: red-team measured where known, else conservative estimate. Core tradable = >=20k weekly_usd AND >=1000 swaps_14d.",
  "_threshold_weekly_usd": 20000,
- "ASTER": {"weekly_usd": 392000, "impact_bps_200": 31, "verdict": "tradable"},
- "CAKE":  {"weekly_usd": 158000, "impact_bps_200": 34, "verdict": "tradable"},
- "ZEC":   {"weekly_usd": 107000, "impact_bps_200": 122, "verdict": "tradable_expensive"},
- "XRP":   {"weekly_usd": 65000,  "impact_bps_200": 36, "verdict": "tradable"},
- "DOGE":  {"weekly_usd": 29000,  "impact_bps_200": 150, "verdict": "marginal"},
- "UNI":   {"weekly_usd": 3400,   "impact_bps_200": 87, "verdict": "thin"},
- "ADA":   {"weekly_usd": 1300,   "impact_bps_200": 260, "verdict": "thin"},
- "INJ":   {"weekly_usd": 1000,   "impact_bps_200": 999, "verdict": "untradeable"},
- "ETH":   {"weekly_usd": 150,    "impact_bps_200": 999, "verdict": "untradeable_onchain"},
- "BCH":   {"weekly_usd": 130,    "impact_bps_200": 999, "verdict": "untradeable"},
- "XPL":   {"weekly_usd": 1000,   "impact_bps_200": 999, "verdict": "untradeable"}
+ "ETH": {
+  "weekly_usd": 247,
+  "swaps_14d": 7,
+  "impact_bps_200": 200,
+  "verdict": "untradeable"
+ },
+ "XRP": {
+  "weekly_usd": 180920,
+  "swaps_14d": 2707,
+  "impact_bps_200": 36,
+  "verdict": "tradable"
+ },
+ "TRX": {
+  "weekly_usd": 6070,
+  "swaps_14d": 1458,
+  "impact_bps_200": 120,
+  "verdict": "untradeable"
+ },
+ "DOGE": {
+  "weekly_usd": 20500,
+  "swaps_14d": 3005,
+  "impact_bps_200": 150,
+  "verdict": "tradable"
+ },
+ "ZEC": {
+  "weekly_usd": 777156,
+  "swaps_14d": 3254,
+  "impact_bps_200": 122,
+  "verdict": "tradable"
+ },
+ "ADA": {
+  "weekly_usd": 78734,
+  "swaps_14d": 1141,
+  "impact_bps_200": 70,
+  "verdict": "tradable"
+ },
+ "LINK": {
+  "weekly_usd": 5144,
+  "swaps_14d": 513,
+  "impact_bps_200": 130,
+  "verdict": "untradeable"
+ },
+ "BCH": {
+  "weekly_usd": 3504,
+  "swaps_14d": 76,
+  "impact_bps_200": 200,
+  "verdict": "untradeable"
+ },
+ "LTC": {
+  "weekly_usd": 10014,
+  "swaps_14d": 104,
+  "impact_bps_200": 200,
+  "verdict": "thin"
+ },
+ "AVAX": {
+  "weekly_usd": 4485,
+  "swaps_14d": 96,
+  "impact_bps_200": 200,
+  "verdict": "untradeable"
+ },
+ "SHIB": {
+  "weekly_usd": 3350,
+  "swaps_14d": 408,
+  "impact_bps_200": 200,
+  "verdict": "untradeable"
+ },
+ "WLFI": {
+  "weekly_usd": 9984,
+  "swaps_14d": 428,
+  "impact_bps_200": 200,
+  "verdict": "thin"
+ },
+ "DOT": {
+  "weekly_usd": 3536,
+  "swaps_14d": 432,
+  "impact_bps_200": 200,
+  "verdict": "untradeable"
+ },
+ "UNI": {
+  "weekly_usd": 8646,
+  "swaps_14d": 710,
+  "impact_bps_200": 87,
+  "verdict": "thin"
+ },
+ "ASTER": {
+  "weekly_usd": 500272,
+  "swaps_14d": 4504,
+  "impact_bps_200": 31,
+  "verdict": "tradable"
+ },
+ "DEXE": {
+  "weekly_usd": 17886,
+  "swaps_14d": 75,
+  "impact_bps_200": 200,
+  "verdict": "thin"
+ },
+ "ETC": {
+  "weekly_usd": 846,
+  "swaps_14d": 187,
+  "impact_bps_200": 200,
+  "verdict": "untradeable"
+ },
+ "AAVE": {
+  "weekly_usd": 4122,
+  "swaps_14d": 390,
+  "impact_bps_200": 200,
+  "verdict": "untradeable"
+ },
+ "ATOM": {
+  "weekly_usd": 4618,
+  "swaps_14d": 500,
+  "impact_bps_200": 150,
+  "verdict": "untradeable"
+ },
+ "U": {
+  "weekly_usd": 17,
+  "swaps_14d": 242,
+  "impact_bps_200": 200,
+  "verdict": "untradeable"
+ },
+ "FIL": {
+  "weekly_usd": 2591,
+  "swaps_14d": 86,
+  "impact_bps_200": 200,
+  "verdict": "untradeable"
+ },
+ "INJ": {
+  "weekly_usd": 2398,
+  "swaps_14d": 491,
+  "impact_bps_200": 200,
+  "verdict": "untradeable"
+ },
+ "NIGHT": {
+  "weekly_usd": 4242,
+  "swaps_14d": 182,
+  "impact_bps_200": 200,
+  "verdict": "untradeable"
+ },
+ "FET": {
+  "weekly_usd": 2909,
+  "swaps_14d": 121,
+  "impact_bps_200": 200,
+  "verdict": "untradeable"
+ },
+ "BONK": {
+  "weekly_usd": 998,
+  "swaps_14d": 77,
+  "impact_bps_200": 200,
+  "verdict": "untradeable"
+ },
+ "CAKE": {
+  "weekly_usd": 563767,
+  "swaps_14d": 8484,
+  "impact_bps_200": 34,
+  "verdict": "tradable"
+ },
+ "ZRO": {
+  "weekly_usd": 141,
+  "swaps_14d": 20,
+  "impact_bps_200": 200,
+  "verdict": "untradeable"
+ },
+ "KITE": {
+  "weekly_usd": 14620,
+  "swaps_14d": 177,
+  "impact_bps_200": 200,
+  "verdict": "thin"
+ },
+ "FLOKI": {
+  "weekly_usd": 12190,
+  "swaps_14d": 180,
+  "impact_bps_200": 200,
+  "verdict": "thin"
+ },
+ "LDO": {
+  "weekly_usd": 0,
+  "swaps_14d": 1,
+  "impact_bps_200": 200,
+  "verdict": "untradeable"
+ },
+ "FF": {
+  "weekly_usd": 34294,
+  "swaps_14d": 388,
+  "impact_bps_200": 160,
+  "verdict": "thin"
+ },
+ "STG": {
+  "weekly_usd": 25278,
+  "swaps_14d": 4415,
+  "impact_bps_200": 90,
+  "verdict": "tradable_risky"
+ },
+ "AXS": {
+  "weekly_usd": 714,
+  "swaps_14d": 106,
+  "impact_bps_200": 200,
+  "verdict": "untradeable"
+ },
+ "TWT": {
+  "weekly_usd": 47698,
+  "swaps_14d": 481,
+  "impact_bps_200": 140,
+  "verdict": "marginal_lumpy"
+ },
+ "HOME": {
+  "weekly_usd": 1736,
+  "swaps_14d": 132,
+  "impact_bps_200": 200,
+  "verdict": "untradeable"
+ },
+ "RAY": {
+  "weekly_usd": 0,
+  "swaps_14d": 0,
+  "impact_bps_200": 200,
+  "verdict": "untradeable"
+ },
+ "COMP": {
+  "weekly_usd": 121,
+  "swaps_14d": 20,
+  "impact_bps_200": 200,
+  "verdict": "untradeable"
+ },
+ "GENIUS": {
+  "weekly_usd": 0,
+  "swaps_14d": 0,
+  "impact_bps_200": 200,
+  "verdict": "untradeable"
+ },
+ "XPL": {
+  "weekly_usd": 27381,
+  "swaps_14d": 248,
+  "impact_bps_200": 200,
+  "verdict": "thin"
+ },
+ "BAT": {
+  "weekly_usd": 1022,
+  "swaps_14d": 250,
+  "impact_bps_200": 200,
+  "verdict": "untradeable"
+ },
+ "APE": {
+  "weekly_usd": 0,
+  "swaps_14d": 0,
+  "impact_bps_200": 200,
+  "verdict": "untradeable"
+ },
+ "SFP": {
+  "weekly_usd": 1143,
+  "swaps_14d": 224,
+  "impact_bps_200": 200,
+  "verdict": "untradeable"
+ },
+ "NXPC": {
+  "weekly_usd": 4,
+  "swaps_14d": 2,
+  "impact_bps_200": 200,
+  "verdict": "untradeable"
+ },
+ "SAHARA": {
+  "weekly_usd": 4014,
+  "swaps_14d": 206,
+  "impact_bps_200": 200,
+  "verdict": "untradeable"
+ },
+ "1INCH": {
+  "weekly_usd": 148,
+  "swaps_14d": 51,
+  "impact_bps_200": 200,
+  "verdict": "untradeable"
+ },
+ "BANANAS31": {
+  "weekly_usd": 7356,
+  "swaps_14d": 7260,
+  "impact_bps_200": 200,
+  "verdict": "untradeable"
+ },
+ "SNX": {
+  "weekly_usd": 0,
+  "swaps_14d": 5,
+  "impact_bps_200": 200,
+  "verdict": "untradeable"
+ },
+ "FORM": {
+  "weekly_usd": 8062,
+  "swaps_14d": 173,
+  "impact_bps_200": 200,
+  "verdict": "thin"
+ },
+ "0G": {
+  "weekly_usd": 532,
+  "swaps_14d": 7,
+  "impact_bps_200": 200,
+  "verdict": "untradeable"
+ },
+ "YFI": {
+  "weekly_usd": 0,
+  "swaps_14d": 0,
+  "impact_bps_200": 200,
+  "verdict": "untradeable"
+ },
+ "HUMA": {
+  "weekly_usd": 1,
+  "swaps_14d": 5,
+  "impact_bps_200": 200,
+  "verdict": "untradeable"
+ },
+ "ROSE": {
+  "weekly_usd": 0,
+  "swaps_14d": 1,
+  "impact_bps_200": 200,
+  "verdict": "untradeable"
+ },
+ "OPEN": {
+  "weekly_usd": 915,
+  "swaps_14d": 20,
+  "impact_bps_200": 200,
+  "verdict": "untradeable"
+ },
+ "ACH": {
+  "weekly_usd": 314,
+  "swaps_14d": 43,
+  "impact_bps_200": 200,
+  "verdict": "untradeable"
+ },
+ "AXL": {
+  "weekly_usd": 366,
+  "swaps_14d": 115,
+  "impact_bps_200": 200,
+  "verdict": "untradeable"
+ },
+ "BARD": {
+  "weekly_usd": 0,
+  "swaps_14d": 0,
+  "impact_bps_200": 200,
+  "verdict": "untradeable"
+ },
+ "DUSK": {
+  "weekly_usd": 652,
+  "swaps_14d": 99,
+  "impact_bps_200": 200,
+  "verdict": "untradeable"
+ },
+ "SUSHI": {
+  "weekly_usd": 36,
+  "swaps_14d": 23,
+  "impact_bps_200": 200,
+  "verdict": "untradeable"
+ }
 }

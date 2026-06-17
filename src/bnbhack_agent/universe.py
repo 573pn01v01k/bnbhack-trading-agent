@@ -189,15 +189,22 @@ def dex_cost_bps(*, path: Path | str = DEX_LIQUIDITY_FILE, lp_fee_bps: float = 2
 
 
 def dex_liquid_candidates(present: list[str], n: int | None = None, *,
-                          min_weekly_usd: float = DEX_MIN_WEEKLY_USD) -> list[str]:
-    """The investable set: eligible names present in `present` with real on-chain
-    depth (>= `min_weekly_usd` weekly DEX volume), ranked by DEX volume descending.
+                          min_weekly_usd: float = DEX_MIN_WEEKLY_USD,
+                          path: Path | str = DEX_LIQUIDITY_FILE) -> list[str]:
+    """The investable set: eligible names present in `present` that are genuinely
+    EXECUTABLE on PancakeSwap — verdict `tradable*` in the cache (>= `min_weekly_usd`
+    weekly DEX volume AND enough swap count that ~$200 trades are not the whole book),
+    ranked by DEX volume descending. Filtering on verdict (not volume alone) excludes
+    lumpy names that clear the dollar bar on a handful of large swaps (e.g. TWT/FF/XPL).
 
     This replaces CEX-volume ranking for every allocation decision. The red-team
-    validated that ranking/restricting by *measured BSC DEX volume* converts the
-    book from auto-DQ (−40% / 51% DD on CEX-rank) to DQ-safe (+2.3% / 23% DD)."""
-    rank = dex_liquidity_ranking()
-    liquid = [s for s in present if rank.get(s, 0.0) >= min_weekly_usd]
+    validated that ranking/restricting by *measured BSC DEX volume* converts the book
+    from auto-DQ (−40% / 51% DD on CEX-rank) to DQ-safe (DD < 20%)."""
+    data = json.loads(Path(path).read_text())
+    rank = dex_liquidity_ranking(path=path)
+    liquid = [s for s in present
+              if rank.get(s, 0.0) >= min_weekly_usd
+              and str(data.get(s, {}).get("verdict", "")).startswith("tradable")]
     liquid.sort(key=lambda s: rank.get(s, 0.0), reverse=True)
     return liquid[:n] if n else liquid
 

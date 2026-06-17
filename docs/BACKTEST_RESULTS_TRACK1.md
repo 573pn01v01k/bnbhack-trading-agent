@@ -1,6 +1,6 @@
 # Track-1 Backtest Results — live strategy (DEX-liquid ensemble)
 
-Window: 2880 bars, 2026-02-16 16:00:00+00:00 → 2026-06-16 15:00:00+00:00. Investable set (ranked by **measured BSC DEX volume**, > $20k/wk): **ASTER, CAKE, ZEC, XRP, DOGE** (5 names). The agent executes spot on PancakeSwap via TWAK, so the universe is filtered by on-chain depth, **not** Binance/CEX volume.
+Window: 2880 bars, 2026-02-16 16:00:00+00:00 → 2026-06-16 15:00:00+00:00. Investable set (ranked by **measured BSC DEX volume**, > $20k/wk): **ZEC, CAKE, ASTER, XRP, ADA, STG, DOGE** (7 names). The agent executes spot on PancakeSwap via TWAK, so the universe is filtered by on-chain depth, **not** Binance/CEX volume.
 
 Live config: model-averaged ensemble of regime-gated equal-weight over basket sizes N=[3, 4] × regime MAs=[240, 336, 480], per-name cap 0.34, regime **hysteresis** band 0.0075, per-name **20% trailing stop**, rebalanced every 4h. Cost model: **measured per-name BSC DEX slippage + 25bps LP fee**.
 
@@ -13,7 +13,7 @@ Live config: model-averaged ensemble of regime-gated equal-weight over basket si
 | **Live book, full window (realistic cost)** | **-2.2%** | **0.04** | **18.7%** |
 | Live book, locked 21d holdout | +3.1% | 3.65 | 2.5% |
 | _(reference) same book @ optimistic 10bps_ | +15.2% | 1.26 | 14.4% |
-| Equal-weight (DEX-liquid set) baseline | +7.6% | 0.68 | 29.2% |
+| Equal-weight (DEX-liquid set) baseline | +13.9% | 0.96 | 28.7% |
 | BTC buy-and-hold | -2.9% | 0.01 | 28.0% |
 
 **Max drawdown 18.7% is inside the 30% disqualification gate** — the design priority. The per-name trailing stop and regime hysteresis are what hold it there.

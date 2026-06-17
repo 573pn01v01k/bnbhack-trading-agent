@@ -1,10 +1,12 @@
 {
-  "n_candidates": 5,
+  "n_candidates": 7,
   "candidates": [
-    "ASTER",
-    "CAKE",
     "ZEC",
+    "CAKE",
+    "ASTER",
     "XRP",
+    "ADA",
+    "STG",
     "DOGE"
   ],
   "bars": 2880,
@@ -28,9 +30,9 @@
     "max_dd": 0.0251
   },
   "baseline_ew": {
-    "return": 0.0762,
-    "sharpe": 0.676,
-    "max_dd": 0.2917
+    "return": 0.1387,
+    "sharpe": 0.959,
+    "max_dd": 0.2868
   },
   "baseline_btc": {
     "return": -0.0294,
@@ -72,10 +74,12 @@
     "cost_model": "measured per-name BSC DEX slippage + 25bps LP fee"
   },
   "per_name_cost_bps": {
-    "ASTER": 56.0,
-    "CAKE": 59.0,
     "ZEC": 147.0,
+    "CAKE": 59.0,
+    "ASTER": 56.0,
     "XRP": 61.0,
+    "ADA": 95.0,
+    "STG": 115.0,
     "DOGE": 175.0
   }
 }

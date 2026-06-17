@@ -47,6 +47,15 @@ fragility, realistic cost, and adverse scenarios (reports in [`docs/redteam/`](.
 | Dead portfolio drawdown stop (equity hardcoded) | 🟡 | Wired real equity (TWAK live) + all-cash circuit-breaker at the internal hard stop |
 | Moonshot churn through thin pools | 🟡 | ~−1.9pp drag under realistic cost → **defaults off** |
 
+**Follow-up — full on-chain DEX scan (`scripts/scan_dex_liquidity.py`, all 59 names, 14d).** Confirmed the
+investable set and corrected the seed cache (ADA was mis-measured as thin at $1.3k/wk; it is really ~$79k/wk
+and liquid). But **expanding the universe was rejected as net-negative**: the four deepest names
+{ZEC, CAKE, ASTER, XRP} are the optimum — N=(4,5) adding ADA goes −2.2% → −6.0%, N=5 → −8.4%, with drawdown
+barely changing (18.0–18.7%, the names are correlated crypto-beta so extra diversification doesn't cut risk,
+only adds cost). The shipped `ensemble_ns=(3,4)` over the DEX-liquid top-4 is the validated sweet spot. The
+`dex_liquid_candidates` filter was tightened to require executability (swap count), not dollar volume alone,
+so lumpy names (TWT/FF/XPL clear $20k/wk on a handful of large swaps) can't leak in.
+
 ## Honest meta-conclusion
 Across **~15 distinct hypotheses over three multi-agent rounds** (and many variants), **no robust
 return-alpha exists in this universe/period — symmetric or asymmetric.** The "obvious" convex ideas all have a hidden

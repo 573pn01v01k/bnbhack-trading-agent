@@ -1,0 +1,236 @@
+{
+ "_note": "full 14d BSC DEX scan via evm.swap_events",
+ "_threshold_weekly_usd": 20000,
+ "ETH": {
+  "swaps_14d": 7,
+  "stable_leg_14d": 494
+ },
+ "XRP": {
+  "swaps_14d": 2707,
+  "stable_leg_14d": 361839
+ },
+ "TRX": {
+  "swaps_14d": 1458,
+  "stable_leg_14d": 12141
+ },
+ "DOGE": {
+  "swaps_14d": 3005,
+  "stable_leg_14d": 41001
+ },
+ "ZEC": {
+  "swaps_14d": 3254,
+  "stable_leg_14d": 1554312
+ },
+ "ADA": {
+  "swaps_14d": 1141,
+  "stable_leg_14d": 157469
+ },
+ "LINK": {
+  "swaps_14d": 513,
+  "stable_leg_14d": 10289
+ },
+ "BCH": {
+  "swaps_14d": 76,
+  "stable_leg_14d": 7008
+ },
+ "LTC": {
+  "swaps_14d": 104,
+  "stable_leg_14d": 20028
+ },
+ "AVAX": {
+  "swaps_14d": 96,
+  "stable_leg_14d": 8970
+ },
+ "SHIB": {
+  "swaps_14d": 408,
+  "stable_leg_14d": 6701
+ },
+ "WLFI": {
+  "swaps_14d": 428,
+  "stable_leg_14d": 19968
+ },
+ "DOT": {
+  "swaps_14d": 432,
+  "stable_leg_14d": 7073
+ },
+ "UNI": {
+  "swaps_14d": 710,
+  "stable_leg_14d": 17292
+ },
+ "ASTER": {
+  "swaps_14d": 4504,
+  "stable_leg_14d": 1000544
+ },
+ "DEXE": {
+  "swaps_14d": 75,
+  "stable_leg_14d": 35773
+ },
+ "ETC": {
+  "swaps_14d": 187,
+  "stable_leg_14d": 1692
+ },
+ "AAVE": {
+  "swaps_14d": 390,
+  "stable_leg_14d": 8245
+ },
+ "ATOM": {
+  "swaps_14d": 500,
+  "stable_leg_14d": 9237
+ },
+ "U": {
+  "swaps_14d": 242,
+  "stable_leg_14d": 34
+ },
+ "FIL": {
+  "swaps_14d": 86,
+  "stable_leg_14d": 5182
+ },
+ "INJ": {
+  "swaps_14d": 491,
+  "stable_leg_14d": 4796
+ },
+ "NIGHT": {
+  "swaps_14d": 182,
+  "stable_leg_14d": 8483
+ },
+ "FET": {
+  "swaps_14d": 121,
+  "stable_leg_14d": 5818
+ },
+ "BONK": {
+  "swaps_14d": 77,
+  "stable_leg_14d": 1995
+ },
+ "CAKE": {
+  "swaps_14d": 8484,
+  "stable_leg_14d": 1127534
+ },
+ "ZRO": {
+  "swaps_14d": 20,
+  "stable_leg_14d": 282
+ },
+ "KITE": {
+  "swaps_14d": 177,
+  "stable_leg_14d": 29239
+ },
+ "FLOKI": {
+  "swaps_14d": 180,
+  "stable_leg_14d": 24381
+ },
+ "LDO": {
+  "swaps_14d": 1,
+  "stable_leg_14d": 0
+ },
+ "FF": {
+  "swaps_14d": 388,
+  "stable_leg_14d": 68588
+ },
+ "STG": {
+  "swaps_14d": 4415,
+  "stable_leg_14d": 50555
+ },
+ "AXS": {
+  "swaps_14d": 106,
+  "stable_leg_14d": 1428
+ },
+ "TWT": {
+  "swaps_14d": 481,
+  "stable_leg_14d": 95396
+ },
+ "HOME": {
+  "swaps_14d": 132,
+  "stable_leg_14d": 3472
+ },
+ "RAY": {
+  "swaps_14d": 0,
+  "stable_leg_14d": 0
+ },
+ "COMP": {
+  "swaps_14d": 20,
+  "stable_leg_14d": 242
+ },
+ "GENIUS": {
+  "swaps_14d": 0,
+  "stable_leg_14d": 0
+ },
+ "XPL": {
+  "swaps_14d": 248,
+  "stable_leg_14d": 54762
+ },
+ "BAT": {
+  "swaps_14d": 250,
+  "stable_leg_14d": 2043
+ },
+ "APE": {
+  "swaps_14d": 0,
+  "stable_leg_14d": 0
+ },
+ "SFP": {
+  "swaps_14d": 224,
+  "stable_leg_14d": 2286
+ },
+ "NXPC": {
+  "swaps_14d": 2,
+  "stable_leg_14d": 7
+ },
+ "SAHARA": {
+  "swaps_14d": 206,
+  "stable_leg_14d": 8029
+ },
+ "1INCH": {
+  "swaps_14d": 51,
+  "stable_leg_14d": 296
+ },
+ "BANANAS31": {
+  "swaps_14d": 7260,
+  "stable_leg_14d": 14712
+ },
+ "SNX": {
+  "swaps_14d": 5,
+  "stable_leg_14d": 0
+ },
+ "FORM": {
+  "swaps_14d": 173,
+  "stable_leg_14d": 16123
+ },
+ "0G": {
+  "swaps_14d": 7,
+  "stable_leg_14d": 1064
+ },
+ "YFI": {
+  "swaps_14d": 0,
+  "stable_leg_14d": 0
+ },
+ "HUMA": {
+  "swaps_14d": 5,
+  "stable_leg_14d": 2
+ },
+ "ROSE": {
+  "swaps_14d": 1,
+  "stable_leg_14d": 0
+ },
+ "OPEN": {
+  "swaps_14d": 20,
+  "stable_leg_14d": 1830
+ },
+ "ACH": {
+  "swaps_14d": 43,
+  "stable_leg_14d": 627
+ },
+ "AXL": {
+  "swaps_14d": 115,
+  "stable_leg_14d": 732
+ },
+ "BARD": {
+  "swaps_14d": 0,
+  "stable_leg_14d": 0
+ },
+ "DUSK": {
+  "swaps_14d": 99,
+  "stable_leg_14d": 1305
+ },
+ "SUSHI": {
+  "swaps_14d": 23,
+  "stable_leg_14d": 71
+ }
+}
