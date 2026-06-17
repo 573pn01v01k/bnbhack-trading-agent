@@ -60,6 +60,7 @@ class AgentConfig:
     use_monolit_edge: bool = True          # Monolit security screening (cached daily)
     use_cmc: bool = True                   # CMC Agent Hub live regime overlay (needs CMC_PRO_API_KEY)
     use_flow: bool = False                 # per-cycle on-chain flow tilt — off by default (slow + marginal)
+    use_news_veto: bool = True             # negative-news veto on HELD names (search_twitter + M3, bounded/logged)
     security_ttl_h: int = 24               # re-check token security at most once/day
 
 
@@ -113,8 +114,22 @@ def decide(config: AgentConfig, client=None) -> dict:
             except Exception:
                 flow = {}
 
+    # First pass: who would we hold? Negative-news veto only scores HELD names
+    # (bounded), then we re-allocate with the merged veto set.
+    news_audit: list[dict] = []
+    if config.use_news_veto and client is not None:
+        try:
+            prelim = ST.live_ensemble_allocation(price, candidates, config.cfg, vetoes=vetoes)
+            held = list(prelim["weights"].keys())
+            from .news_veto import negative_vetoes
+            nv, news_audit = negative_vetoes(client, held)
+            vetoes = vetoes | nv
+        except Exception:
+            news_audit = []  # best-effort: never block the core decision
+
     alloc = ST.live_ensemble_allocation(price, candidates, config.cfg, vetoes=vetoes)
     alloc["vetoes"] = sorted(vetoes)
+    alloc["news_veto"] = news_audit
     alloc["flow_imbalance"] = {k: round(v, 3) for k, v in flow.items()}
 
     # CMC Agent Hub live regime overlay (bounded, logged) — trims exposure in euphoria.
@@ -200,6 +215,7 @@ def run_once(config: AgentConfig | None = None, client=None, *, live: bool = Fal
         "risk_off": alloc.get("risk_off_fraction", alloc.get("risk_off")),
         "n_target": len(alloc["weights"]),
         "vetoes": alloc.get("vetoes", []),
+        "news_veto": alloc.get("news_veto", []),
         "cmc": alloc.get("cmc"),
         "drawdown": round(drawdown, 4),
         "trades_planned": len(trades),
