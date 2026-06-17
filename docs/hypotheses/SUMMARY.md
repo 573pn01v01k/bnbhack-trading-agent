@@ -22,9 +22,19 @@ cost** (gas + slippage on spot PancakeSwap). "No edge" is recorded as a real res
 | Monolit token-security veto | overlay | ✅ **keep** | Cached daily honeypot/tax screen; off the hot path |
 | **Negative-news veto (MiniMax M3 + Monolit search_twitter)** | overlay | ✅ **KEEP (integrated)** | Asymmetric risk control: drop a held name on a fresh severe event (hack/exploit/depeg/delisting). Mechanism validated on the STG −64% Coinbase-delisting crash |
 
+## Round 3 (novel angles + sizing)
+
+| Hypothesis | Verdict | Why |
+|---|---|---|
+| Deep single-token wallet lead-lag (CAKE/ASTER, hourly, full history) | ❌ reject | In-sample "lead" wallets are dormant launch-accumulators (uncopyable) or adverse MM/HFT bots; nothing survives the holdout; multiple-comparison mining over a launch uptrend |
+| BTC-breakout alt-catchup | ❌ reject | Fresh BTC new-highs precede alt *under*-performance (local exhaustion); the only positive conditioner is the risk-on MA state the regime gate already harvests; strictly worse OOS than incumbent |
+| DEX↔CEX lead-lag (catch arbitragers) | ❌ reject | Lead-lag is real but fully consumed within ~1h; after gas+slippage we are the one front-run |
+| MiniMax-M3 moonshot allocator | ⚠️ partial | The LLM doesn't beat the mechanical sleeve OOS; one *feature* it uses (vol-expansion confirm) is a marginally better mover-filter — integrate the feature, not the LLM (optional) |
+| **Convex sizing (basket concentration)** | ✅ **SHIPPED** | `ensemble_ns=(2,3)`, `max_weight=0.50`: ~5×'s the weekly right tail (overlapping P(>15%) 2%→~10%, a >20% week appears) while keeping worst-week/full DD under the 30% gate. Caveat: tail is **episodic** — non-overlapping n=17 shows max ~14%, P(>15%)=0%; the upside is concentrated in trending weeks. Amplified regime-beta, not new alpha. |
+
 ## Honest meta-conclusion
-Across ~15 distinct hypotheses (and many variants), **no robust return-alpha exists in this
-universe/period — symmetric or asymmetric.** The "obvious" convex ideas all have a hidden
+Across **~15 distinct hypotheses over three multi-agent rounds** (and many variants), **no robust
+return-alpha exists in this universe/period — symmetric or asymmetric.** The "obvious" convex ideas all have a hidden
 left tail (depeg), no tradeable edge (listing/unlock), or negative EV (squeeze). The durable
 edge remains **regime-gated diversified beta + a capped moonshot sleeve**, and the genuine
 value-adds are **bounded risk-control overlays**, not return boosters:

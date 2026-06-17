@@ -45,10 +45,10 @@ class StrategyConfig:
     regime_ref: str = "BTC"      # regime reference asset
     ma_window: int = 336         # ~14d BTC MA gate (walk-forward picks lived in 240–672)
     max_positions: int = 12      # liquid candidate pool the ensemble slices into top-N sleeves
-    ensemble_ns: tuple = (3, 5, 8)        # basket-size sleeves (model averaging — robust, walk-forward+holdout validated)
+    ensemble_ns: tuple = (2, 3)           # concentrated sleeves — convex sizing (R3): ~5x's P(week>15%) for the 1-week tail
     ensemble_mas: tuple = (240, 336, 480) # regime-MA sleeves
     rebalance_hours: int = 4     # main sleeve re-weights every 4h (cost-robust)
-    max_weight: float = 0.34     # per-name cap (binds only for the most concentrated sleeve)
+    max_weight: float = 0.50     # per-name cap (the 2-name sleeve binds here; keeps worst-week DD under the 30% gate)
     # --- moonshot sleeve: capped lottery that fills idle cash (risk-off optionality + daily heartbeat) ---
     moonshot_frac: float = 0.10  # max fraction of capital in moonshots (bounded downside; "less size")
     moonshot_k: int = 3          # how many movers to hold

@@ -17,14 +17,14 @@ Validated on **120 days of real hourly data** across **64 eligible BEP-20 tokens
 
 | Strategy (live config) | Return | Sharpe | Max DD |
 |---|---:|---:|---:|
-| **Ensemble — full window** | **+9.0%** | 0.83 | 16.4% |
-| Ensemble — locked 21d holdout | +3.5% | 3.71 | 3.2% |
-| Equal-weight baseline | −0.7% | 0.26 | — |
+| **Ensemble (convex) — full window** | **+20.0%** | 1.35 | 18.5% |
+| Ensemble — locked 21d holdout | +3.5% | 3.14 | 4.8% |
+| Equal-weight baseline | +13.7% | 0.91 | — |
 | BTC buy-and-hold | −2.4% | — | 28% |
 
-The live strategy is a **model-averaged ensemble**: regime-gated equal-weight over a grid of basket sizes (N=3/5/8 most-liquid) × regime MAs (240/336/480h), rebalanced every 4h. Model-averaging is anti-overfitting by construction — it never bets on one in-sample-best parameter — and it's the only high-return config that also survives the holdout. **Cost-robust to ~20 bps** (+5.8% at 20bps; the 4h rebalance halves turnover vs hourly).
+The live strategy is a **convex model-averaged ensemble**: regime-gated equal-weight over concentrated basket sizes (N=2/3 most-liquid, per-name cap 0.50) × regime MAs (240/336/480h), rebalanced every 4h. Model-averaging is anti-overfitting (never bets on one in-sample-best parameter); the concentration is **convex sizing** tuned for the single-week contest — it ~5×'s the weekly right tail (P(week>15%) 2%→~10% on overlapping windows; a 6–7% shot at a >20% week) while keeping worst-week and full-window drawdown **under the 30% DQ gate** (15.7% / 18.5–25.6%). Cost-robust to 40 bps.
 
-**Honest caveats** (from full robustness validation): returns are **regime-dependent** (−10% / +20% / +0% across three sub-periods) — this is diversified crypto-beta capture with a downside regime gate, *not* a stable systematic edge. Naive momentum, reversal, vol-concentration, time-series momentum, adaptive sizing, and on-chain DEX-flow selection were all tested under the same walk-forward + holdout protocol and **rejected**; the ensemble is what survived. Reproduce: `python3 -m bnbhack_agent.cli track1-backtest`.
+**Honest caveats** (from full robustness validation): returns are **strongly regime-dependent and the fat tail is episodic** — sub-periods run −12% / +40% / −2%, almost all upside comes from one trending stretch, and on the *independent* (non-overlapping) 7-day sample the realized max was ~14% with P(>15%)=0%. So the headline tail is real *optionality* for a trending week, not a per-week promise; in a choppy/down week the book bleeds modestly with downside gated, never a blow-up. This is amplified regime-beta + a capped moonshot, **not** stable selection alpha — ~15 signal hypotheses (momentum, flow, whale-copy, funding, news-tilt, depeg, unlock, listing, squeeze, DEX/CEX lead-lag, LLM-allocator) were tested across three multi-agent rounds and **all rejected** as return-alpha; convex sizing + bounded risk-control overlays are what survived. Reproduce: `python3 -m bnbhack_agent.cli track1-backtest`.
 
 ## How it works
 
