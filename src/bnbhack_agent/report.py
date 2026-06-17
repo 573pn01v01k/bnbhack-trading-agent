@@ -72,12 +72,23 @@ def build_backtest_report(*, days: int = 120, out_md: Path = REPORT_MD) -> dict:
     tail = {"mean": float(win.mean()), "p95": float(np.percentile(win, 95)),
             "max": float(win.max()), "p_gt15": float((win > 0.15).mean())}
 
+    # Per-week (NON-overlapping) distribution — the "qualified any week?" test. Returns are
+    # sliced from the full warmed-up series so the regime MA is never recomputed on a short slice.
+    H = 168
+    wk = [(float((1 + r.iloc[i:i + H]).prod() - 1),
+           float((lambda e: ((e.cummax() - e) / e.cummax()).max())((1 + r.iloc[i:i + H]).cumprod())))
+          for i in range(0, len(r) - H + 1, H)]
+    wret = np.array([x[0] for x in wk]); wdd = np.array([x[1] for x in wk])
+    weekly = {"n_weeks": len(wk), "worst_ret": float(wret.min()), "median_ret": float(np.median(wret)),
+              "best_ret": float(wret.max()), "worst_dd": float(wdd.max()), "weeks_dq": int((wdd >= 0.30).sum()),
+              "p_pos": float((wret > 0).mean())}
+
     summary = {
         "n_candidates": len(cand), "candidates": cand, "bars": int(n),
         "span": [str(px.index.min()), str(px.index.max())],
         "full": full, "full_optimistic_10bps": full_opt, "holdout": holdout,
         "baseline_ew": base_ew, "baseline_btc": base_btc,
-        "cost_curve": cost_curve, "subperiods": subperiods, "tail": tail,
+        "cost_curve": cost_curve, "subperiods": subperiods, "tail": tail, "weekly": weekly,
         "config": {"ns": list(ST.FROZEN.ensemble_ns), "mas": list(ST.FROZEN.ensemble_mas),
                    "rebalance_hours": ST.FROZEN.rebalance_hours, "max_weight": ST.FROZEN.max_weight,
                    "regime_band": ST.FROZEN.regime_band, "trailing_stop": ST.FROZEN.trailing_stop,
@@ -148,6 +159,19 @@ def _render(s) -> str:
         "than the pure gate (the two sleeves' drawdowns offset), while the holdout stays positive and far inside "
         "the gate. The always-invested core also makes the contest's ≥1-trade/day requirement organic (no synthetic "
         "heartbeat needed). Dial up toward 0.50 for more upside in a trending week, at more drawdown.",
+        "",
+        "## Qualified any week? — per-week (non-overlapping) distribution",
+        "",
+        (lambda w: f"Across **{w['n_weeks']} non-overlapping 7-day windows** (returns sliced from the full warmed-up "
+         f"series), the worst single-week drawdown was **{w['worst_dd']*100:.1f}%** and **{w['weeks_dq']} weeks "
+         f"breached the 30% gate** — the contest's qualify-any-week bar is met with wide headroom. Weekly return: "
+         f"worst {_p(w['worst_ret'])}, median {_p(w['median_ret'])}, best {_p(w['best_ret'])}; {w['p_pos']*100:.0f}% "
+         "of weeks positive.")(s["weekly"]),
+        "",
+        "Honest read: the **median week is ~flat** — the full-window figure above is compounding across a trending "
+        "stretch, not a per-week promise. The contest payoff is a coin-flip on direction with a single-digit edge and "
+        "a small shot at a ~+12% week, **and a book that does not disqualify**. That asymmetry — capped, qualified "
+        "downside vs an open trending-week upside — is the play, since aggressive books that chase return will DQ.",
         "",
         "## Cost sensitivity",
         "",

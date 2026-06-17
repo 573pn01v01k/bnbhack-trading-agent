@@ -30,6 +30,12 @@ The book blends a regime-gated ensemble with a **30% always-invested core** (EW 
 
 The default 0.30 is the conservative pick — it earns *higher* full return **and** *lower* full drawdown than the pure gate (the two sleeves' drawdowns offset), while the holdout stays positive and far inside the gate. The always-invested core also makes the contest's ≥1-trade/day requirement organic (no synthetic heartbeat needed). Dial up toward 0.50 for more upside in a trending week, at more drawdown.
 
+## Qualified any week? — per-week (non-overlapping) distribution
+
+Across **17 non-overlapping 7-day windows** (returns sliced from the full warmed-up series), the worst single-week drawdown was **12.3%** and **0 weeks breached the 30% gate** — the contest's qualify-any-week bar is met with wide headroom. Weekly return: worst -8.2%, median -0.3%, best +11.9%; 47% of weeks positive.
+
+Honest read: the **median week is ~flat** — the full-window figure above is compounding across a trending stretch, not a per-week promise. The contest payoff is a coin-flip on direction with a single-digit edge and a small shot at a ~+12% week, **and a book that does not disqualify**. That asymmetry — capped, qualified downside vs an open trending-week upside — is the play, since aggressive books that chase return will DQ.
+
 ## Cost sensitivity
 
 | tx cost | full-window return |
