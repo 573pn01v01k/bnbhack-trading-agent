@@ -58,6 +58,7 @@ class AgentConfig:
     min_trade_usd: float = 5.0             # skip dust trades
     heartbeat_hours: int = 20              # force a tiny trade if idle this long -> guarantees >=1 trade/day
     use_monolit_edge: bool = True          # Monolit security screening (cached daily)
+    use_cmc: bool = True                   # CMC Agent Hub live regime overlay (needs CMC_PRO_API_KEY)
     use_flow: bool = False                 # per-cycle on-chain flow tilt — off by default (slow + marginal)
     security_ttl_h: int = 24               # re-check token security at most once/day
 
@@ -115,6 +116,16 @@ def decide(config: AgentConfig, client=None) -> dict:
     alloc = ST.live_ensemble_allocation(price, candidates, config.cfg, vetoes=vetoes)
     alloc["vetoes"] = sorted(vetoes)
     alloc["flow_imbalance"] = {k: round(v, 3) for k, v in flow.items()}
+
+    # CMC Agent Hub live regime overlay (bounded, logged) — trims exposure in euphoria.
+    cmc_sig = {"caution_factor": 1.0, "source": "off"}
+    if config.use_cmc:
+        from .cmc import CMCClient, regime_signal
+        cmc_sig = regime_signal(CMCClient())          # neutral if no CMC_PRO_API_KEY
+        cf = cmc_sig.get("caution_factor", 1.0)
+        if cf < 1.0:
+            alloc["weights"] = {k: round(v * cf, 5) for k, v in alloc["weights"].items()}
+    alloc["cmc"] = cmc_sig
     return alloc
 
 
@@ -189,6 +200,7 @@ def run_once(config: AgentConfig | None = None, client=None, *, live: bool = Fal
         "risk_off": alloc.get("risk_off_fraction", alloc.get("risk_off")),
         "n_target": len(alloc["weights"]),
         "vetoes": alloc.get("vetoes", []),
+        "cmc": alloc.get("cmc"),
         "drawdown": round(drawdown, 4),
         "trades_planned": len(trades),
         "executed": executed,
