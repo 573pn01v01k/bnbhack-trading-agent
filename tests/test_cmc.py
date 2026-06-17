@@ -18,7 +18,9 @@ class _FakeCMC:
         return {"btc_dominance": 55.0}
 
 
-def test_neutral_without_key():
+def test_neutral_without_key(monkeypatch):
+    monkeypatch.delenv("CMC_PRO_API_KEY", raising=False)
+    monkeypatch.delenv("CMC_API_KEY", raising=False)
     assert CMCClient(api_key=None).available() is False
     assert regime_signal(None)["caution_factor"] == 1.0
 
