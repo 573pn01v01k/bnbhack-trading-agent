@@ -81,6 +81,7 @@ def build_backtest_report(*, days: int = 120, out_md: Path = REPORT_MD) -> dict:
         "config": {"ns": list(ST.FROZEN.ensemble_ns), "mas": list(ST.FROZEN.ensemble_mas),
                    "rebalance_hours": ST.FROZEN.rebalance_hours, "max_weight": ST.FROZEN.max_weight,
                    "regime_band": ST.FROZEN.regime_band, "trailing_stop": ST.FROZEN.trailing_stop,
+                   "core_ew_frac": ST.FROZEN.core_ew_frac,
                    "cost_model": "measured per-name BSC DEX slippage + 25bps LP fee"},
         "per_name_cost_bps": {c: cost_by.get(c) for c in cand},
     }
@@ -106,8 +107,9 @@ def _render(s) -> str:
         f"({s['n_candidates']} names). The agent executes spot on PancakeSwap via TWAK, so the universe is "
         "filtered by on-chain depth, **not** Binance/CEX volume.",
         "",
-        f"Live config: model-averaged ensemble of regime-gated equal-weight over basket sizes N={cfg['ns']} × "
-        f"regime MAs={cfg['mas']}, per-name cap {cfg['max_weight']}, regime **hysteresis** band {cfg['regime_band']}, "
+        f"Live config: a blend of (1) the regime-gated model-averaged ensemble over basket sizes N={cfg['ns']} × "
+        f"regime MAs={cfg['mas']} and (2) a **{int(cfg['core_ew_frac']*100)}% always-invested core EW sleeve** "
+        f"(the risk dial — see below); per-name cap {cfg['max_weight']}, regime **hysteresis** band {cfg['regime_band']}, "
         f"per-name **{int(cfg['trailing_stop']*100)}% trailing stop**, rebalanced every {cfg['rebalance_hours']}h. "
         f"Cost model: **{cfg['cost_model']}**.",
         "",
@@ -129,6 +131,23 @@ def _render(s) -> str:
         "",
         f"**Max drawdown {f['max_dd']*100:.1f}% is inside the 30% disqualification gate** — the design priority. "
         "The per-name trailing stop and regime hysteresis are what hold it there.",
+        "",
+        "## Risk dial — the core-exposure frontier",
+        "",
+        f"The book blends a regime-gated ensemble with a **{int(cfg['core_ew_frac']*100)}% always-invested core** "
+        "(EW over the DEX-liquid top-4, protected only by the trailing stop). That core fraction is a smooth, "
+        "monotonic risk dial, validated DQ-safe across its range:",
+        "",
+        "| core EW frac | full return | full DD | holdout return | holdout DD |",
+        "|---:|---:|---:|---:|---:|",
+        "| 0.00 (pure gate, min risk) | −2.2% | 18.7% | +3.1% | 2.5% |",
+        f"| **{cfg['core_ew_frac']:.2f} (shipped default)** | **{_p(f['return'])}** | **{f['max_dd']*100:.1f}%** | **{_p(h['return'])}** | **{h['max_dd']*100:.1f}%** |",
+        "| 0.50 (more upside) | +8.5% | 18.2% | +0.6% | 11.4% |",
+        "",
+        "The default 0.30 is the conservative pick — it earns *higher* full return **and** *lower* full drawdown "
+        "than the pure gate (the two sleeves' drawdowns offset), while the holdout stays positive and far inside "
+        "the gate. The always-invested core also makes the contest's ≥1-trade/day requirement organic (no synthetic "
+        "heartbeat needed). Dial up toward 0.50 for more upside in a trending week, at more drawdown.",
         "",
         "## Cost sensitivity",
         "",

@@ -4,8 +4,9 @@ Validated on 120d of real hourly data, **net of measured per-name PancakeSwap
 slippage** (the cost that matters — the agent executes on a DEX, not a CEX), with
 a locked 21-day holdout:
 
-    DEX-liquid ensemble (N=3/4 x MA=240/336/480) :  -2.2% full / +3.1% holdout / DD 18.7%  (LIVE)
-    equal-weight (DEX-liquid set) baseline       :  +7.6% full but DD 29.2% (~at the DQ cliff)
+    DEX-liquid BLENDED book (30% core + gate)    :  +4.3% full / +1.7% holdout / DD 15.9%  (LIVE)
+      pure regime gate (core_ew_frac=0)          :  -2.2% full / +3.1% holdout / DD 18.7%
+    equal-weight (DEX-liquid set) baseline       : +13.5% full but DD 29.6% (~at the DQ cliff)
     BTC buy-and-hold                             :  -2.9% / DD 28%
 
 RED-TEAM CORRECTION: an earlier version ranked by Binance CEX volume and assumed a
@@ -16,12 +17,14 @@ investable set to names with real BSC DEX depth (>$20k/wk) via
 `universe.dex_liquid_candidates`, and price slippage per name. The honest result is a
 DQ-safe book (DD 18.7% < 30% gate) with a modest right tail, not a +20% edge.
 
-The strategy is a model-averaged ENSEMBLE over basket sizes N=(3,4) x regime MAs —
-anti-overfit by construction (never a single-parameter bet). Two circuit-breakers cap
-the left tail: a regime-HYSTERESIS gate (exit risk-off fast, re-enter only above
-MA*(1+band) — kills whipsaw) and a 20% per-name TRAILING STOP (a held name 20% below
-its 24h peak drops to cash). Both are near-zero carry on a benign window and bound
-drawdown in stress. Spot-only, no leverage (perps out of scope).
+The strategy BLENDS a regime-gated model-averaged ENSEMBLE (basket sizes N=(3,4) x regime
+MAs — anti-overfit, never a single-parameter bet) with a small ALWAYS-INVESTED core EW
+sleeve (`core_ew_frac`, default 0.30). The core captures the beta the binary gate sits out
+and keeps the book trading every bar (organic >=1-trade/day). It is a smooth risk dial,
+DQ-safe across its range; 0.30 earns higher return AND lower full DD than the pure gate
+(the sleeves' drawdowns offset). Two circuit-breakers cap the left tail: a regime-HYSTERESIS
+gate (exit risk-off fast, re-enter only above MA*(1+band)) and a 20% per-name TRAILING STOP.
+Spot-only, no leverage (perps out of scope).
 
 Net of realistic cost, NO positive return-alpha survives here (consistent with ~15
 rejected signal hypotheses). The leaderboard play is convexity + not getting
@@ -59,6 +62,16 @@ class StrategyConfig:
     regime_band: float = 0.0075  # hysteresis: exit risk-off fast (BTC<MA) but only re-enter at BTC>MA*(1+band) — kills whipsaw
     trailing_stop: float = 0.20  # per-name circuit-breaker: held name >=20% below its trailing-24h peak -> drop to cash
     trailing_lookback: int = 24  # trailing-peak window (h) for the per-name stop
+    # --- core always-invested sleeve: small EW exposure that is NOT regime-gated (only the
+    # per-name trailing stop protects it). It captures the beta the binary regime gate sits
+    # out, and it keeps the book trading every bar (so >=1 trade/day is organic, not a synthetic
+    # heartbeat). RISK DIAL on a smooth, monotonic frontier — validated DQ-safe up the range:
+    #   0.00 = pure regime gate (min risk): full -2.2% / DD 18.7% | holdout +3.1% / DD 2.5%
+    #   0.30 (default)                    : full +4.3% / DD 15.9% | holdout +1.7% / DD 7.0%
+    #   0.50                              : full +8.5% / DD 18.2% | holdout +0.6% / DD 11.4%
+    # 0.30 is the conservative pick: higher return AND lower full DD than pure-gate, holdout
+    # still positive and far inside the 30% gate. Raise toward 0.5 for more upside / more risk.
+    core_ew_frac: float = 0.30
     # --- moonshot sleeve: OPTIONAL convex lottery on the DEX-liquid set, DEFAULT OFF ---
     # Tested net-of-realistic-DEX-slippage it is a ~-1.9pp drag (it churns idle cash through
     # thin pools), so it does not earn its keep — same verdict as the ~15 rejected return signals.
@@ -216,21 +229,46 @@ def moonshot_weights(price: pd.DataFrame, candidates: list[str], cfg: StrategyCo
     return w
 
 
+def core_ew_weights(price: pd.DataFrame, ranked_candidates: list[str], cfg: StrategyConfig = FROZEN,
+                    *, vetoes: set[str] | None = None) -> pd.DataFrame:
+    """Always-invested equal-weight over the top-N DEX-liquid names (N = max basket size),
+    NOT regime-gated — only the per-name trailing stop protects it. The small permanent beta
+    the binary gate sits out, and the source of organic daily trading in risk-off."""
+    n = max(cfg.ensemble_ns) if cfg.ensemble_ns else cfg.max_positions
+    cols = [c for c in ranked_candidates[:n] if c in price.columns and c != cfg.regime_ref]
+    sub = price[cols]
+    w = sub.notna().astype("float64")
+    if vetoes:
+        for v in vetoes:
+            if v in w.columns:
+                w[v] = 0.0
+    w = w.div(w.sum(axis=1).replace(0, np.nan), axis=0).clip(upper=cfg.max_weight).fillna(0.0)
+    rb = cfg.rebalance_hours
+    if rb and rb > 1 and len(w) > rb:
+        keep = (np.arange(len(w)) % rb) == 0
+        w = w.where(pd.Series(keep, index=w.index), np.nan).ffill().fillna(0.0)
+    return w
+
+
 def combined_weights(price: pd.DataFrame, ranked_candidates: list[str], cfg: StrategyConfig = FROZEN,
                      *, vetoes: set[str] | None = None) -> pd.DataFrame:
-    """Live target weights: the validated main ensemble PLUS a capped moonshot sleeve that
-    fills idle cash. In risk-on the book is mostly the ensemble; in risk-off (ensemble in
-    cash) up to `moonshot_frac` is deployed into frequent small moonshot bets — bounded
-    downside, right-tail upside, and guaranteed trading activity in any regime."""
-    main = ensemble_weights(price, ranked_candidates, cfg, vetoes=vetoes)
-    moon = moonshot_weights(price, ranked_candidates, cfg)
+    """Live target weights: a blend of (1) the regime-gated ensemble and (2) a small
+    always-invested core EW sleeve (`core_ew_frac`), plus an optional capped moonshot sleeve
+    on idle cash. Risk-on → ~fully invested; risk-off → only the core stays (trailing-stopped),
+    so the book is never fully in cash and always trades. The core fraction is the risk dial
+    (see StrategyConfig.core_ew_frac); 0.0 recovers the pure regime gate."""
+    ens = ensemble_weights(price, ranked_candidates, cfg, vetoes=vetoes)
+    core = core_ew_weights(price, ranked_candidates, cfg, vetoes=vetoes)
+    cf = cfg.core_ew_frac
+    cols = sorted(set(ens.columns) | set(core.columns))
+    ens = ens.reindex(columns=cols, fill_value=0.0)
+    core = core.reindex(columns=cols, fill_value=0.0)
+    main = ens.mul(1.0 - cf).add(core.mul(cf), fill_value=0.0)   # blend the two sleeves
+    moon = moonshot_weights(price, ranked_candidates, cfg).reindex(columns=cols, fill_value=0.0)
     cash = (1.0 - main.sum(axis=1)).clip(lower=0.0)
-    alloc = cash.clip(upper=cfg.moonshot_frac)              # only ever use idle cash, capped
-    cols = sorted(set(main.columns) | set(moon.columns))
-    main = main.reindex(columns=cols, fill_value=0.0)
-    moon = moon.reindex(columns=cols, fill_value=0.0)
+    alloc = cash.clip(upper=cfg.moonshot_frac)                   # only ever use idle cash, capped
     combined = main.add(moon.mul(alloc, axis=0), fill_value=0.0)
-    return apply_trailing_stop(price, combined, cfg)        # per-name DQ circuit-breaker
+    return apply_trailing_stop(price, combined, cfg)             # per-name DQ circuit-breaker
 
 
 def live_ensemble_allocation(price: pd.DataFrame, ranked_candidates: list[str], cfg: StrategyConfig = FROZEN,

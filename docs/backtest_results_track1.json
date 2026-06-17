@@ -15,24 +15,24 @@
     "2026-06-16 15:00:00+00:00"
   ],
   "full": {
-    "return": -0.0216,
-    "sharpe": 0.041,
-    "max_dd": 0.1868
+    "return": 0.0428,
+    "sharpe": 0.512,
+    "max_dd": 0.1587
   },
   "full_optimistic_10bps": {
-    "return": 0.1518,
-    "sharpe": 1.263,
-    "max_dd": 0.1439
+    "return": 0.1739,
+    "sharpe": 1.361,
+    "max_dd": 0.1429
   },
   "holdout": {
-    "return": 0.0314,
-    "sharpe": 3.65,
-    "max_dd": 0.0251
+    "return": 0.017,
+    "sharpe": 1.188,
+    "max_dd": 0.0699
   },
   "baseline_ew": {
-    "return": 0.1387,
-    "sharpe": 0.959,
-    "max_dd": 0.2868
+    "return": 0.1352,
+    "sharpe": 0.945,
+    "max_dd": 0.2961
   },
   "baseline_btc": {
     "return": -0.0294,
@@ -40,21 +40,21 @@
     "max_dd": 0.2802
   },
   "cost_curve": {
-    "0": 0.1775,
-    "10": 0.1518,
-    "40": 0.0782,
-    "80": -0.0129,
-    "per-name (live)": -0.0216
+    "0": 0.1927,
+    "10": 0.1739,
+    "40": 0.1193,
+    "80": 0.0504,
+    "per-name (live)": 0.0428
   },
   "subperiods": [
-    -0.1588,
-    0.1984,
-    -0.0295
+    -0.1373,
+    0.2351,
+    -0.0213
   ],
   "tail": {
-    "mean": 0.001278431280881176,
-    "p95": 0.12153405718011945,
-    "max": 0.22704254694459025,
+    "mean": 0.004438708220767154,
+    "p95": 0.12758742349361085,
+    "max": 0.21803060245893824,
     "p_gt15": 0.03982300884955752
   },
   "config": {
@@ -71,6 +71,7 @@
     "max_weight": 0.34,
     "regime_band": 0.0075,
     "trailing_stop": 0.2,
+    "core_ew_frac": 0.3,
     "cost_model": "measured per-name BSC DEX slippage + 25bps LP fee"
   },
   "per_name_cost_bps": {
