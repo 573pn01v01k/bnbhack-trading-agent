@@ -23,15 +23,15 @@ HOLDOUT_BARS = 21 * 24
 
 
 def _candidates(px) -> list[str]:
+    """The EXECUTABLE candidate set: eligible tradeable names that are present, then
+    restricted+ranked by *measured BSC DEX liquidity* (not CEX volume — see the
+    red-team note in universe.py). Coverage bar is low (0.30) on purpose: the deepest
+    on-chain names (e.g. ASTER) are recent listings with short history but are exactly
+    the names we can execute in size; target_weights zero-weights bars where price is NaN."""
     cov = px.notna().mean()
     trad = [t.symbol for t in U.tradeable_tokens(U.load_universe())]
-    cand = [s for s in trad if s in px.columns and cov[s] > 0.85 and s != "BTC"]
-    try:
-        liq = U.liquidity_ranking()
-        cand = sorted(cand, key=lambda s: liq.get(s, 0.0), reverse=True)
-    except Exception:
-        pass
-    return cand
+    present = [s for s in trad if s in px.columns and cov[s] > 0.30 and s != "BTC"]
+    return U.dex_liquid_candidates(present)
 
 
 def _m(r):
@@ -45,31 +45,44 @@ def build_backtest_report(*, days: int = 120, out_md: Path = REPORT_MD) -> dict:
         sorted({t.symbol for t in U.tradeable_tokens(U.load_universe())} | {"BTC"}), days=days)
     cand = _candidates(px)
 
-    # live strategy: model-averaged ensemble weights -> returns at the live config (4h rebalance, 10bps)
-    W = ST.ensemble_weights(px, cand)
+    # The live book exactly as the agent runs it: model-averaged ensemble + capped
+    # heartbeat sleeve + per-name trailing stop + regime hysteresis, over the DEX-liquid set.
+    W = ST.combined_weights(px, cand)
     sub = px[W.columns]
-    r = strategy_returns(sub, W, cost_bps=ST.FROZEN.cost_bps)
+    cost_by = U.dex_cost_bps()                                   # measured per-name DEX slippage + LP fee
+
+    # Headline = HONEST cost (realistic per-name DEX slippage). Optimistic = the old flat 10bps.
+    r = strategy_returns(sub, W, cost_bps_by_name=cost_by)
+    r_opt = strategy_returns(sub, W, cost_bps=ST.FROZEN.cost_bps)
 
     full, holdout = _m(r), _m(r.iloc[-HOLDOUT_BARS:])
-    # baselines on the same window
+    full_opt = _m(r_opt)
+    # baselines on the same DEX-liquid window (realistic cost)
     ew = sub.notna().astype("float64"); ew = ew.div(ew.sum(axis=1).replace(0, np.nan), axis=0).fillna(0.0)
-    base_ew = _m(strategy_returns(sub, ew, cost_bps=ST.FROZEN.cost_bps))
+    base_ew = _m(strategy_returns(sub, ew, cost_bps_by_name=cost_by))
     base_btc = _m(px["BTC"].pct_change().fillna(0.0))
 
-    cost_curve = {c: _m(strategy_returns(sub, W, cost_bps=c))["return"] for c in (0, 10, 20, 40)}
+    # cost curve: flat-bps reference points (shows how sensitive the book is to the cost assumption)
+    cost_curve = {c: _m(strategy_returns(sub, W, cost_bps=c))["return"] for c in (0, 10, 40, 80)}
+    cost_curve["per-name (live)"] = full["return"]
     n = len(r)
     subperiods = [_m(r.iloc[a:b])["return"] for a, b in ((0, n // 3), (n // 3, 2 * n // 3), (2 * n // 3, n))]
     eq = (1 + r).cumprod()
-    win = np.array([eq.iloc[i + 168] / eq.iloc[i] - 1 for i in range(0, len(eq) - 168, 12)])
+    win = np.array([eq.iloc[i + 168] / eq.iloc[i] - 1 for i in range(0, len(eq) - 168, 12)]) if len(eq) > 168 else np.array([0.0])
     tail = {"mean": float(win.mean()), "p95": float(np.percentile(win, 95)),
             "max": float(win.max()), "p_gt15": float((win > 0.15).mean())}
 
     summary = {
-        "n_candidates": len(cand), "bars": int(n), "span": [str(px.index.min()), str(px.index.max())],
-        "full": full, "holdout": holdout, "baseline_ew": base_ew, "baseline_btc": base_btc,
+        "n_candidates": len(cand), "candidates": cand, "bars": int(n),
+        "span": [str(px.index.min()), str(px.index.max())],
+        "full": full, "full_optimistic_10bps": full_opt, "holdout": holdout,
+        "baseline_ew": base_ew, "baseline_btc": base_btc,
         "cost_curve": cost_curve, "subperiods": subperiods, "tail": tail,
-        "config": {"ns": ST.FROZEN.ensemble_ns, "mas": ST.FROZEN.ensemble_mas,
-                   "rebalance_hours": ST.FROZEN.rebalance_hours, "cost_bps": ST.FROZEN.cost_bps},
+        "config": {"ns": list(ST.FROZEN.ensemble_ns), "mas": list(ST.FROZEN.ensemble_mas),
+                   "rebalance_hours": ST.FROZEN.rebalance_hours, "max_weight": ST.FROZEN.max_weight,
+                   "regime_band": ST.FROZEN.regime_band, "trailing_stop": ST.FROZEN.trailing_stop,
+                   "cost_model": "measured per-name BSC DEX slippage + 25bps LP fee"},
+        "per_name_cost_bps": {c: cost_by.get(c) for c in cand},
     }
     out_md.parent.mkdir(parents=True, exist_ok=True)
     out_md.write_text(_render(summary))
@@ -82,48 +95,61 @@ def _p(x):
 
 
 def _render(s) -> str:
-    f, h, ew, btc = s["full"], s["holdout"], s["baseline_ew"], s["baseline_btc"]
+    f, fo, h, ew, btc = s["full"], s["full_optimistic_10bps"], s["holdout"], s["baseline_ew"], s["baseline_btc"]
     cfg = s["config"]
+    cand = ", ".join(s.get("candidates", []))
     L = [
-        "# Track-1 Backtest Results — live strategy (robust ensemble)",
+        "# Track-1 Backtest Results — live strategy (DEX-liquid ensemble)",
         "",
-        f"Universe: **{s['n_candidates']} eligible BEP-20 tokens** (Binance hourly). "
         f"Window: {s['bars']} bars, {s['span'][0]} → {s['span'][1]}. "
-        f"Live config: model-averaged ensemble of regime-gated equal-weight over basket sizes "
-        f"N={cfg['ns']} × regime MAs={cfg['mas']}, rebalanced every {cfg['rebalance_hours']}h, {cfg['cost_bps']}bps cost.",
+        f"Investable set (ranked by **measured BSC DEX volume**, > $20k/wk): **{cand}** "
+        f"({s['n_candidates']} names). The agent executes spot on PancakeSwap via TWAK, so the universe is "
+        "filtered by on-chain depth, **not** Binance/CEX volume.",
         "",
-        "The ensemble is anti-overfit by construction: it never selects an in-sample-best parameter, "
-        "it averages over a grid. The locked 21-day holdout was never used to build it.",
+        f"Live config: model-averaged ensemble of regime-gated equal-weight over basket sizes N={cfg['ns']} × "
+        f"regime MAs={cfg['mas']}, per-name cap {cfg['max_weight']}, regime **hysteresis** band {cfg['regime_band']}, "
+        f"per-name **{int(cfg['trailing_stop']*100)}% trailing stop**, rebalanced every {cfg['rebalance_hours']}h. "
+        f"Cost model: **{cfg['cost_model']}**.",
         "",
-        "## Headline",
+        "> **Why this report differs from earlier drafts.** Earlier versions ranked by CEX volume and assumed a "
+        "flat 10 bps cost, reporting ~+20%. A red-team audit showed that book concentrated into names with ~no "
+        "on-chain depth and would have hit **50%+ drawdown from real DEX slippage → automatic disqualification**. "
+        "The headline below is now net of **measured per-name PancakeSwap slippage**, on the DEX-liquid set only. "
+        "The honest result is a **DQ-safe book with a modest right tail**, not a +20% edge.",
+        "",
+        "## Headline (net of realistic per-name DEX slippage)",
         "",
         "| | Return | Sharpe | Max DD |",
         "|---|---:|---:|---:|",
-        f"| **Ensemble (live), full window** | **{_p(f['return'])}** | **{f['sharpe']:.2f}** | **{f['max_dd']*100:.1f}%** |",
-        f"| Ensemble, locked 21d holdout | {_p(h['return'])} | {h['sharpe']:.2f} | {h['max_dd']*100:.1f}% |",
-        f"| Equal-weight baseline | {_p(ew['return'])} | {ew['sharpe']:.2f} | {ew['max_dd']*100:.1f}% |",
+        f"| **Live book, full window (realistic cost)** | **{_p(f['return'])}** | **{f['sharpe']:.2f}** | **{f['max_dd']*100:.1f}%** |",
+        f"| Live book, locked 21d holdout | {_p(h['return'])} | {h['sharpe']:.2f} | {h['max_dd']*100:.1f}% |",
+        f"| _(reference) same book @ optimistic 10bps_ | {_p(fo['return'])} | {fo['sharpe']:.2f} | {fo['max_dd']*100:.1f}% |",
+        f"| Equal-weight (DEX-liquid set) baseline | {_p(ew['return'])} | {ew['sharpe']:.2f} | {ew['max_dd']*100:.1f}% |",
         f"| BTC buy-and-hold | {_p(btc['return'])} | {btc['sharpe']:.2f} | {btc['max_dd']*100:.1f}% |",
         "",
-        "## Cost sensitivity (turnover robustness)",
+        f"**Max drawdown {f['max_dd']*100:.1f}% is inside the 30% disqualification gate** — the design priority. "
+        "The per-name trailing stop and regime hysteresis are what hold it there.",
+        "",
+        "## Cost sensitivity",
         "",
         "| tx cost | full-window return |",
         "|---:|---:|",
-        *[f"| {c} bps | {_p(v)} |" for c, v in s["cost_curve"].items()],
+        *[f"| {c if not isinstance(c, int) else f'{c} bps'} | {_p(v)} |" for c, v in s["cost_curve"].items()],
         "",
-        f"The {cfg['rebalance_hours']}h rebalance keeps the book profitable through ~20bps of cost — "
-        "hourly rebalancing did not (it churned the regime gate).",
+        "The gap between the 10 bps line and the per-name line is exactly the cost the earlier report hid. "
+        "Honest numbers, not the flattering ones.",
         "",
         "## Honest caveats — robustness validation",
         "",
         f"- **Returns are regime-dependent, not a stable edge.** Across three equal sub-periods: "
-        f"{_p(s['subperiods'][0])}, {_p(s['subperiods'][1])}, {_p(s['subperiods'][2])}. Almost all the profit "
-        "comes from one trending window; the strategy loses or sits in cash otherwise. This is diversified "
-        "crypto-beta capture with a downside regime gate — not systematic alpha.",
+        f"{_p(s['subperiods'][0])}, {_p(s['subperiods'][1])}, {_p(s['subperiods'][2])}. This is diversified "
+        "crypto-beta capture with a downside regime gate + circuit-breakers — not systematic alpha.",
         f"- **7-day right tail** (leaderboard relevance): mean {_p(s['tail']['mean'])}, p95 {_p(s['tail']['p95'])}, "
         f"max {_p(s['tail']['max'])}, P(week > 15%) {s['tail']['p_gt15']*100:.1f}%.",
-        "- Naive momentum, reversal, vol-concentration, time-series momentum, adaptive sizing, and on-chain "
-        "DEX-flow selection were all tested under the same walk-forward + holdout protocol and **rejected** "
-        "(overfit or no edge). The ensemble is what survived.",
+        "- ~15 signal hypotheses (momentum, flow, whale-copy, funding, news-tilt, depeg, unlock, listing, squeeze, "
+        "DEX/CEX lead-lag, LLM-allocator) were tested under walk-forward + locked holdout + cost and **rejected** as "
+        "return-alpha. What survived: regime-gated DEX-liquid beta + bounded risk-control overlays (F&G guard, "
+        "security veto, negative-news veto). The leaderboard play is convexity + not getting disqualified.",
         "",
         "Reproduce: `python3 -m bnbhack_agent.cli track1-backtest`.",
         "",

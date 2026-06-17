@@ -1,33 +1,39 @@
-# Track-1 Backtest Results — live strategy (robust ensemble)
+# Track-1 Backtest Results — live strategy (DEX-liquid ensemble)
 
-Universe: **64 eligible BEP-20 tokens** (Binance hourly). Window: 2880 bars, 2026-02-16 16:00:00+00:00 → 2026-06-16 15:00:00+00:00. Live config: model-averaged ensemble of regime-gated equal-weight over basket sizes N=(2, 3) × regime MAs=(240, 336, 480), rebalanced every 4h, 10.0bps cost.
+Window: 2880 bars, 2026-02-16 16:00:00+00:00 → 2026-06-16 15:00:00+00:00. Investable set (ranked by **measured BSC DEX volume**, > $20k/wk): **ASTER, CAKE, ZEC, XRP, DOGE** (5 names). The agent executes spot on PancakeSwap via TWAK, so the universe is filtered by on-chain depth, **not** Binance/CEX volume.
 
-The ensemble is anti-overfit by construction: it never selects an in-sample-best parameter, it averages over a grid. The locked 21-day holdout was never used to build it.
+Live config: model-averaged ensemble of regime-gated equal-weight over basket sizes N=[3, 4] × regime MAs=[240, 336, 480], per-name cap 0.34, regime **hysteresis** band 0.0075, per-name **20% trailing stop**, rebalanced every 4h. Cost model: **measured per-name BSC DEX slippage + 25bps LP fee**.
 
-## Headline
+> **Why this report differs from earlier drafts.** Earlier versions ranked by CEX volume and assumed a flat 10 bps cost, reporting ~+20%. A red-team audit showed that book concentrated into names with ~no on-chain depth and would have hit **50%+ drawdown from real DEX slippage → automatic disqualification**. The headline below is now net of **measured per-name PancakeSwap slippage**, on the DEX-liquid set only. The honest result is a **DQ-safe book with a modest right tail**, not a +20% edge.
+
+## Headline (net of realistic per-name DEX slippage)
 
 | | Return | Sharpe | Max DD |
 |---|---:|---:|---:|
-| **Ensemble (live), full window** | **+20.0%** | **1.35** | **18.5%** |
-| Ensemble, locked 21d holdout | +3.5% | 3.14 | 4.8% |
-| Equal-weight baseline | +13.7% | 0.91 | 35.5% |
+| **Live book, full window (realistic cost)** | **-2.2%** | **0.04** | **18.7%** |
+| Live book, locked 21d holdout | +3.1% | 3.65 | 2.5% |
+| _(reference) same book @ optimistic 10bps_ | +15.2% | 1.26 | 14.4% |
+| Equal-weight (DEX-liquid set) baseline | +7.6% | 0.68 | 29.2% |
 | BTC buy-and-hold | -2.9% | 0.01 | 28.0% |
 
-## Cost sensitivity (turnover robustness)
+**Max drawdown 18.7% is inside the 30% disqualification gate** — the design priority. The per-name trailing stop and regime hysteresis are what hold it there.
+
+## Cost sensitivity
 
 | tx cost | full-window return |
 |---:|---:|
-| 0 bps | +23.6% |
-| 10 bps | +20.0% |
-| 20 bps | +16.5% |
-| 40 bps | +9.9% |
+| 0 bps | +17.8% |
+| 10 bps | +15.2% |
+| 40 bps | +7.8% |
+| 80 bps | -1.3% |
+| per-name (live) | -2.2% |
 
-The 4h rebalance keeps the book profitable through ~20bps of cost — hourly rebalancing did not (it churned the regime gate).
+The gap between the 10 bps line and the per-name line is exactly the cost the earlier report hid. Honest numbers, not the flattering ones.
 
 ## Honest caveats — robustness validation
 
-- **Returns are regime-dependent, not a stable edge.** Across three equal sub-periods: -12.3%, +39.5%, -1.9%. Almost all the profit comes from one trending window; the strategy loses or sits in cash otherwise. This is diversified crypto-beta capture with a downside regime gate — not systematic alpha.
-- **7-day right tail** (leaderboard relevance): mean +1.5%, p95 +20.0%, max +27.0%, P(week > 15%) 10.2%.
-- Naive momentum, reversal, vol-concentration, time-series momentum, adaptive sizing, and on-chain DEX-flow selection were all tested under the same walk-forward + holdout protocol and **rejected** (overfit or no edge). The ensemble is what survived.
+- **Returns are regime-dependent, not a stable edge.** Across three equal sub-periods: -15.9%, +19.8%, -2.9%. This is diversified crypto-beta capture with a downside regime gate + circuit-breakers — not systematic alpha.
+- **7-day right tail** (leaderboard relevance): mean +0.1%, p95 +12.2%, max +22.7%, P(week > 15%) 4.0%.
+- ~15 signal hypotheses (momentum, flow, whale-copy, funding, news-tilt, depeg, unlock, listing, squeeze, DEX/CEX lead-lag, LLM-allocator) were tested under walk-forward + locked holdout + cost and **rejected** as return-alpha. What survived: regime-gated DEX-liquid beta + bounded risk-control overlays (F&G guard, security veto, negative-news veto). The leaderboard play is convexity + not getting disqualified.
 
 Reproduce: `python3 -m bnbhack_agent.cli track1-backtest`.

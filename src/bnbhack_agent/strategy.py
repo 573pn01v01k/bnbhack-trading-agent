@@ -1,31 +1,37 @@
-"""The frozen Track-1 strategy: regime-gated equal-weight rotation.
+"""The Track-1 strategy: regime-gated equal-weight rotation over the DEX-liquid set.
 
-Walk-forward validated on 120d of real data, with a locked 21-day holdout:
+Validated on 120d of real hourly data, **net of measured per-name PancakeSwap
+slippage** (the cost that matters — the agent executes on a DEX, not a CEX), with
+a locked 21-day holdout:
 
-    ENSEMBLE (avg regime-EW, N=3/5/8 x MA=240/336/480) :  +15.0% OOS / Sharpe 1.82 / holdout +2.4%  (LIVE)
-    regime-EW single config (top-5/10/15)              :  +12-15% OOS but holdout ~-2.6% (fragile)
-    equal-weight baseline                              :  + 7.0% OOS
+    DEX-liquid ensemble (N=3/4 x MA=240/336/480) :  -2.2% full / +3.1% holdout / DD 18.7%  (LIVE)
+    equal-weight (DEX-liquid set) baseline       :  +7.6% full but DD 29.2% (~at the DQ cliff)
+    BTC buy-and-hold                             :  -2.9% / DD 28%
 
-The live strategy is the ENSEMBLE: model-averaging regime-gated equal-weight over a
-grid of basket sizes x regime MAs. It is the only high-return config that also
-survives the holdout positive, because averaging removes the single-parameter bet
-that sinks individual sleeves (anti-overfitting by construction).
+RED-TEAM CORRECTION: an earlier version ranked by Binance CEX volume and assumed a
+flat 10bps cost, reporting ~+20%. But execution is on PancakeSwap — re-measuring
+on-chain depth showed that book concentrated into names with ~no DEX liquidity and
+would have hit 50%+ drawdown from slippage = automatic DQ. The fix: rank/restrict the
+investable set to names with real BSC DEX depth (>$20k/wk) via
+`universe.dex_liquid_candidates`, and price slippage per name. The honest result is a
+DQ-safe book (DD 18.7% < 30% gate) with a modest right tail, not a +20% edge.
 
-Spot-only, no leverage (perps are out of scope). Naive momentum, reversal, and
-vol-concentration were tested under the same protocol and REJECTED (they overfit:
-in-sample positive, OOS deeply negative). Concentration to the most-liquid names
-is the leaderboard lever: it keeps expected return flat-to-up but fattens the
-weekly right tail (max 7-day return +14% at N=64 -> +28% at N=5), while the
-regime gate holds the worst drawdown under the contest's 30% disqualification gate.
+The strategy is a model-averaged ENSEMBLE over basket sizes N=(3,4) x regime MAs —
+anti-overfit by construction (never a single-parameter bet). Two circuit-breakers cap
+the left tail: a regime-HYSTERESIS gate (exit risk-off fast, re-enter only above
+MA*(1+band) — kills whipsaw) and a 20% per-name TRAILING STOP (a held name 20% below
+its 24h peak drops to cash). Both are near-zero carry on a benign window and bound
+drawdown in stress. Spot-only, no leverage (perps out of scope).
 
-Thesis: hold a diversified equal-weight basket of the eligible BEP-20 tokens
-when the market regime is risk-on (BTC above its ~14-day MA); rotate fully to
-the stablecoin leg otherwise. Most profit without blowing up.
+Net of realistic cost, NO positive return-alpha survives here (consistent with ~15
+rejected signal hypotheses). The leaderboard play is convexity + not getting
+disqualified: a book that can post a >15% trending week (max 7d +22.7%, P(week>15%)=4%)
+while drawdown stays well inside the 30% gate. The optional moonshot sleeve defaults
+OFF — it is a ~-1.9pp drag once slippage is real.
 
-The SAME `target_weights` function drives both the backtest and the live agent
-(decision parity). Monolit on-chain flow + token security enter live as a
-best-effort veto/tilt on the held basket (the data edge competitors lack),
-never blocking the core decision if the cluster is slow.
+The SAME `combined_weights` function drives both the backtest and the live agent
+(decision parity). Monolit on-chain flow + token security + the M3 negative-news veto
+enter live as best-effort overlays on the held basket, never blocking the core decision.
 """
 from __future__ import annotations
 
@@ -45,16 +51,24 @@ class StrategyConfig:
     regime_ref: str = "BTC"      # regime reference asset
     ma_window: int = 336         # ~14d BTC MA gate (walk-forward picks lived in 240–672)
     max_positions: int = 12      # liquid candidate pool the ensemble slices into top-N sleeves
-    ensemble_ns: tuple = (2, 3)           # concentrated sleeves — convex sizing (R3): ~5x's P(week>15%) for the 1-week tail
+    ensemble_ns: tuple = (3, 4)           # basket sizes — de-concentrated (red-team): the DEX-liquid set is only ~5 names,
+                                          # so 3–4 spreads slippage and avoids the single-name DQ the (2,3) book risked
     ensemble_mas: tuple = (240, 336, 480) # regime-MA sleeves
     rebalance_hours: int = 4     # main sleeve re-weights every 4h (cost-robust)
-    max_weight: float = 0.50     # per-name cap (the 2-name sleeve binds here; keeps worst-week DD under the 30% gate)
-    # --- moonshot sleeve: capped lottery that fills idle cash (risk-off optionality + daily heartbeat) ---
-    moonshot_frac: float = 0.10  # max fraction of capital in moonshots (bounded downside; "less size")
-    moonshot_k: int = 3          # how many movers to hold
+    max_weight: float = 0.34     # per-name cap (3-name sleeve = 0.33 each; bounds single-name slippage/concentration risk)
+    regime_band: float = 0.0075  # hysteresis: exit risk-off fast (BTC<MA) but only re-enter at BTC>MA*(1+band) — kills whipsaw
+    trailing_stop: float = 0.20  # per-name circuit-breaker: held name >=20% below its trailing-24h peak -> drop to cash
+    trailing_lookback: int = 24  # trailing-peak window (h) for the per-name stop
+    # --- moonshot sleeve: OPTIONAL convex lottery on the DEX-liquid set, DEFAULT OFF ---
+    # Tested net-of-realistic-DEX-slippage it is a ~-1.9pp drag (it churns idle cash through
+    # thin pools), so it does not earn its keep — same verdict as the ~15 rejected return signals.
+    # Kept available (set moonshot_frac>0) for a trending week; the >=1-trade/day rule is met by
+    # the agent's ~zero-cost stable heartbeat, not by this sleeve.
+    moonshot_frac: float = 0.0   # fraction of idle cash in moonshots (0 = off; was 0.10 with the phantom flat cost)
+    moonshot_k: int = 2          # how many movers to hold
     moonshot_lookback: int = 12  # trailing hours used to pick "what's starting to move"
-    moonshot_rebalance: int = 4  # moonshot re-weights every 4h (frequent rotation -> trades daily)
-    cost_bps: float = 10.0       # simulated transaction cost
+    moonshot_rebalance: int = 24 # rotate daily if enabled (a heartbeat cadence, not a churn engine)
+    cost_bps: float = 10.0       # OPTIMISTIC flat cost floor; the report also prices realistic per-name DEX slippage
     dd_cap: float = 0.30         # contest disqualification gate
     hard_dd_stop: float = 0.22   # our internal circuit-breaker, inside the gate
     min_coverage: float = 0.85   # min price-history coverage to include a name
@@ -64,11 +78,55 @@ FROZEN = StrategyConfig()
 
 
 def regime_off(price: pd.DataFrame, cfg: StrategyConfig = FROZEN) -> pd.Series:
-    """Risk-off mask: reference asset below its MA -> rotate to cash/stables."""
+    """Risk-off mask: reference asset below its MA -> rotate to cash/stables.
+
+    With `regime_band` > 0 this is a *hysteresis* gate (red-team fix for whipsaw):
+    exit to cash as soon as BTC < MA, but only re-enter risk-on once BTC climbs back
+    to MA*(1+band). The dead-band stops the book from flip-flopping across the MA in
+    a chop (every flip pays round-trip slippage), at the cost of a slightly later
+    re-entry. Stateless (band=0) reduces to the original `ref < MA` signal.
+    """
     if cfg.regime_ref not in price.columns:
         return pd.Series(False, index=price.index)
     ref = price[cfg.regime_ref]
-    return (ref < ref.rolling(cfg.ma_window).mean()).fillna(False)
+    ma = ref.rolling(cfg.ma_window).mean()
+    if not cfg.regime_band:
+        return (ref < ma).fillna(False)
+    below = (ref < ma).to_numpy()
+    reenter = (ref >= ma * (1.0 + cfg.regime_band)).to_numpy()
+    valid = ma.notna().to_numpy()
+    off = np.zeros(len(ref), dtype=bool)
+    cur = False
+    for i in range(len(ref)):
+        if not valid[i]:
+            off[i] = False
+            continue
+        if cur:                       # currently risk-off: re-enter only if strongly above MA
+            if reenter[i]:
+                cur = False
+        else:                         # currently risk-on: exit the moment we drop below MA
+            if below[i]:
+                cur = True
+        off[i] = cur
+    return pd.Series(off, index=ref.index)
+
+
+def apply_trailing_stop(price: pd.DataFrame, weights: pd.DataFrame, cfg: StrategyConfig = FROZEN) -> pd.DataFrame:
+    """Per-name circuit-breaker: when a held name closes >= `trailing_stop` below its
+    trailing `trailing_lookback`-hour peak, force its weight to zero (the freed weight
+    stays in cash — never redistributed into another falling name). Point-in-time: the
+    trailing peak at bar t uses only prices <= t. Caps a single held-name crash from a
+    DQ-level drawdown to a bounded one (red-team: −50% name -> ~12% book DD vs ~38%)."""
+    if not cfg.trailing_stop:
+        return weights
+    cols = [c for c in weights.columns if c in price.columns]
+    if not cols:
+        return weights
+    px = price[cols]
+    peak = px.rolling(cfg.trailing_lookback, min_periods=1).max()
+    alive = (px >= peak * (1.0 - cfg.trailing_stop))
+    alive = alive.reindex(index=weights.index, columns=weights.columns, fill_value=True).fillna(True)
+    return weights.where(alive, 0.0)
 
 
 def target_weights(
@@ -171,7 +229,8 @@ def combined_weights(price: pd.DataFrame, ranked_candidates: list[str], cfg: Str
     cols = sorted(set(main.columns) | set(moon.columns))
     main = main.reindex(columns=cols, fill_value=0.0)
     moon = moon.reindex(columns=cols, fill_value=0.0)
-    return main.add(moon.mul(alloc, axis=0), fill_value=0.0)
+    combined = main.add(moon.mul(alloc, axis=0), fill_value=0.0)
+    return apply_trailing_stop(price, combined, cfg)        # per-name DQ circuit-breaker
 
 
 def live_ensemble_allocation(price: pd.DataFrame, ranked_candidates: list[str], cfg: StrategyConfig = FROZEN,

@@ -99,18 +99,29 @@ def decide_weights(
     return weights
 
 
-def strategy_returns(price: pd.DataFrame, weights: pd.DataFrame, *, cost_bps: float = 10.0) -> pd.Series:
+def strategy_returns(price: pd.DataFrame, weights: pd.DataFrame, *, cost_bps: float = 10.0,
+                     cost_bps_by_name: dict[str, float] | None = None) -> pd.Series:
     """Per-bar net portfolio returns (no-lookahead, turnover-costed).
 
     Exposed so the walk-forward engine can compute it once per parameter set and
     slice it into train/test windows without recomputation.
+
+    `cost_bps_by_name` (symbol -> bps) charges *per-name* turnover at that name's cost
+    — the honest DEX model (measured PancakeSwap slippage + LP fee), since a flat bps
+    badly understates cost on thin pools. Names absent from the map fall back to
+    `cost_bps`. Pass None to use the flat `cost_bps` everywhere.
     """
     weights = weights.reindex_like(price).fillna(0.0)
     rets = price.pct_change().fillna(0.0)
     held = weights.shift(1).fillna(0.0)
     gross = (held * rets).sum(axis=1)
-    turnover = (weights - weights.shift(1).fillna(0.0)).abs().sum(axis=1)
-    return gross - turnover * (cost_bps / 1e4)
+    dturn = (weights - weights.shift(1).fillna(0.0)).abs()
+    if cost_bps_by_name:
+        bps = pd.Series({c: cost_bps_by_name.get(c, cost_bps) for c in weights.columns})
+        cost = (dturn * (bps / 1e4)).sum(axis=1)
+    else:
+        cost = dturn.sum(axis=1) * (cost_bps / 1e4)
+    return gross - cost
 
 
 def simulate(price: pd.DataFrame, weights: pd.DataFrame, *, cost_bps: float = 10.0) -> PortfolioResult:

@@ -1,24 +1,36 @@
 {
-  "n_candidates": 64,
+  "n_candidates": 5,
+  "candidates": [
+    "ASTER",
+    "CAKE",
+    "ZEC",
+    "XRP",
+    "DOGE"
+  ],
   "bars": 2880,
   "span": [
     "2026-02-16 16:00:00+00:00",
     "2026-06-16 15:00:00+00:00"
   ],
   "full": {
-    "return": 0.2001,
-    "sharpe": 1.354,
-    "max_dd": 0.1853
+    "return": -0.0216,
+    "sharpe": 0.041,
+    "max_dd": 0.1868
+  },
+  "full_optimistic_10bps": {
+    "return": 0.1518,
+    "sharpe": 1.263,
+    "max_dd": 0.1439
   },
   "holdout": {
-    "return": 0.0346,
-    "sharpe": 3.14,
-    "max_dd": 0.0477
+    "return": 0.0314,
+    "sharpe": 3.65,
+    "max_dd": 0.0251
   },
   "baseline_ew": {
-    "return": 0.1369,
-    "sharpe": 0.909,
-    "max_dd": 0.3547
+    "return": 0.0762,
+    "sharpe": 0.676,
+    "max_dd": 0.2917
   },
   "baseline_btc": {
     "return": -0.0294,
@@ -26,26 +38,27 @@
     "max_dd": 0.2802
   },
   "cost_curve": {
-    "0": 0.2358,
-    "10": 0.2001,
-    "20": 0.1653,
-    "40": 0.0988
+    "0": 0.1775,
+    "10": 0.1518,
+    "40": 0.0782,
+    "80": -0.0129,
+    "per-name (live)": -0.0216
   },
   "subperiods": [
-    -0.1233,
-    0.3954,
-    -0.019
+    -0.1588,
+    0.1984,
+    -0.0295
   ],
   "tail": {
-    "mean": 0.015415488644803648,
-    "p95": 0.1997876430216255,
-    "max": 0.2702329392175522,
-    "p_gt15": 0.10176991150442478
+    "mean": 0.001278431280881176,
+    "p95": 0.12153405718011945,
+    "max": 0.22704254694459025,
+    "p_gt15": 0.03982300884955752
   },
   "config": {
     "ns": [
-      2,
-      3
+      3,
+      4
     ],
     "mas": [
       240,
@@ -53,6 +66,16 @@
       480
     ],
     "rebalance_hours": 4,
-    "cost_bps": 10.0
+    "max_weight": 0.34,
+    "regime_band": 0.0075,
+    "trailing_stop": 0.2,
+    "cost_model": "measured per-name BSC DEX slippage + 25bps LP fee"
+  },
+  "per_name_cost_bps": {
+    "ASTER": 56.0,
+    "CAKE": 59.0,
+    "ZEC": 147.0,
+    "XRP": 61.0,
+    "DOGE": 175.0
   }
 }

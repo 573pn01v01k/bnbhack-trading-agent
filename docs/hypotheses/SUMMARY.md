@@ -30,7 +30,22 @@ cost** (gas + slippage on spot PancakeSwap). "No edge" is recorded as a real res
 | BTC-breakout alt-catchup | ❌ reject | Fresh BTC new-highs precede alt *under*-performance (local exhaustion); the only positive conditioner is the risk-on MA state the regime gate already harvests; strictly worse OOS than incumbent |
 | DEX↔CEX lead-lag (catch arbitragers) | ❌ reject | Lead-lag is real but fully consumed within ~1h; after gas+slippage we are the one front-run |
 | MiniMax-M3 moonshot allocator | ⚠️ partial | The LLM doesn't beat the mechanical sleeve OOS; one *feature* it uses (vol-expansion confirm) is a marginally better mover-filter — integrate the feature, not the LLM (optional) |
-| **Convex sizing (basket concentration)** | ✅ **SHIPPED** | `ensemble_ns=(2,3)`, `max_weight=0.50`: ~5×'s the weekly right tail (overlapping P(>15%) 2%→~10%, a >20% week appears) while keeping worst-week/full DD under the 30% gate. Caveat: tail is **episodic** — non-overlapping n=17 shows max ~14%, P(>15%)=0%; the upside is concentrated in trending weeks. Amplified regime-beta, not new alpha. |
+| **Convex sizing (basket concentration)** | ⚠️ **REVERSED by red-team** | `ensemble_ns=(2,3)`/`cap 0.50` looked like +20% under a flat-10bps assumption, but it ranked by *CEX* volume and concentrated into names with ~no on-chain depth — net of measured PancakeSwap slippage it goes to −40% / 51% DD = **auto-DQ**. Corrected to N=(3,4) over the **DEX-liquid set only**, cap 0.34 (see Round 4). |
+
+## Round 4 (red-team — execution realism)
+
+Five adversarial agents attacked the shipped book on DEX execution, regime whipsaw, concentration
+fragility, realistic cost, and adverse scenarios (reports in [`docs/redteam/`](../redteam/)).
+
+| Finding | Verdict | Fix shipped |
+|---|---|---|
+| **CEX-volume ranking ≠ DEX liquidity** | 🔴 critical | The agent trades on PancakeSwap; CEX volume is irrelevant. The shipped book held names with <$1k/wk on-chain depth → 50%+ slippage DD. **Rank/restrict by measured BSC DEX volume** (`dex_liquid_candidates`); investable set = {ASTER, CAKE, ZEC, XRP, DOGE} (>$20k/wk) |
+| **Flat 10bps cost was a phantom** | 🔴 critical | Real per-name slippage is 56–175 bps. Backtest now prices **measured per-name DEX cost + LP fee**; headline is net of it (the +20% was an artifact) |
+| Over-concentration (N=(2,3), cap 0.50) | 🟠 | A single-name crash DQ'd the book. **De-concentrated to N=(3,4), cap 0.34** |
+| Regime whipsaw bleeds round-trip cost | 🟡 | **Regime hysteresis** (band 0.0075): exit fast, re-enter only above MA×1.0075 |
+| Single held-name crash → DQ drawdown | 🟡 | **20% per-name trailing stop** → drop to cash (caps a −50% name from ~38% to ~12% book DD) |
+| Dead portfolio drawdown stop (equity hardcoded) | 🟡 | Wired real equity (TWAK live) + all-cash circuit-breaker at the internal hard stop |
+| Moonshot churn through thin pools | 🟡 | ~−1.9pp drag under realistic cost → **defaults off** |
 
 ## Honest meta-conclusion
 Across **~15 distinct hypotheses over three multi-agent rounds** (and many variants), **no robust

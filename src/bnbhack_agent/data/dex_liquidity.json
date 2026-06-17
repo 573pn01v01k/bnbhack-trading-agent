@@ -1,0 +1,15 @@
+{
+ "_note": "Measured BSC PancakeSwap DEX liquidity (weekly USD volume + ~$200 price impact) from the red-team on-chain scan (evm.swap_events, chain=bsc). This is the EXECUTABLE universe — the agent trades spot on PancakeSwap via TWAK, NOT on Binance. Refresh point-in-time before the contest with universe.refresh_dex_liquidity(client). Names not listed have ~no BSC DEX liquidity (TON/XAUT have no BSC contract at all).",
+ "_threshold_weekly_usd": 20000,
+ "ASTER": {"weekly_usd": 392000, "impact_bps_200": 31, "verdict": "tradable"},
+ "CAKE":  {"weekly_usd": 158000, "impact_bps_200": 34, "verdict": "tradable"},
+ "ZEC":   {"weekly_usd": 107000, "impact_bps_200": 122, "verdict": "tradable_expensive"},
+ "XRP":   {"weekly_usd": 65000,  "impact_bps_200": 36, "verdict": "tradable"},
+ "DOGE":  {"weekly_usd": 29000,  "impact_bps_200": 150, "verdict": "marginal"},
+ "UNI":   {"weekly_usd": 3400,   "impact_bps_200": 87, "verdict": "thin"},
+ "ADA":   {"weekly_usd": 1300,   "impact_bps_200": 260, "verdict": "thin"},
+ "INJ":   {"weekly_usd": 1000,   "impact_bps_200": 999, "verdict": "untradeable"},
+ "ETH":   {"weekly_usd": 150,    "impact_bps_200": 999, "verdict": "untradeable_onchain"},
+ "BCH":   {"weekly_usd": 130,    "impact_bps_200": 999, "verdict": "untradeable"},
+ "XPL":   {"weekly_usd": 1000,   "impact_bps_200": 999, "verdict": "untradeable"}
+}

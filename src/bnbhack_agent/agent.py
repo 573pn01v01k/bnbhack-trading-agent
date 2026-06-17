@@ -87,13 +87,19 @@ def _security_vetoes_cached(client, tokens, *, ttl_h: int = 24) -> set[str]:
 
 
 def _candidates(price_cols, cfg: ST.StrategyConfig) -> list[str]:
-    """Concentrated basket: top-N most-liquid eligible tokens present in prices."""
+    """The investable basket: eligible tokens present in prices, restricted+ranked by
+    *measured BSC DEX liquidity* (the agent executes on PancakeSwap, so on-chain depth —
+    not CEX volume — decides what is safely tradable). This is the live-side of the
+    red-team fix; falls back to CEX ranking only if the DEX cache is unavailable."""
     toks = U.tradeable_tokens(U.load_universe())
     present = [t.symbol for t in toks if t.symbol in price_cols]
     try:
-        return U.liquid_candidates(present, cfg.max_positions)
+        liquid = U.dex_liquid_candidates(present)
+        if liquid:
+            return liquid
     except Exception:
-        return present[: cfg.max_positions]
+        pass
+    return U.liquid_candidates(present, cfg.max_positions)
 
 
 def decide(config: AgentConfig, client=None) -> dict:
@@ -161,18 +167,29 @@ def plan_trades(target_weights: dict, holdings: dict, capital: float, *, min_tra
     return trades
 
 
-def run_once(config: AgentConfig | None = None, client=None, *, live: bool = False) -> dict:
+def run_once(config: AgentConfig | None = None, client=None, *, live: bool = False,
+             equity_usd: float | None = None) -> dict:
     config = config or AgentConfig()
     state = AgentState.load()
     twak = TWAKAdapter()
 
     alloc = decide(config, client=client)
-    trades = plan_trades(alloc["weights"], state.holdings, config.capital_usd, min_trade_usd=config.min_trade_usd)
 
-    # risk gate (drawdown stop, slippage, per-trade caps)
-    current_equity = config.capital_usd  # model; live: read from TWAK portfolio
+    # Real equity drives the drawdown circuit-breaker. Live: pass the TWAK portfolio
+    # value (sum of token balances valued in USD). Dry-run/backtest: mark the USD-model
+    # holdings to nothing better than capital, so the stop is only authoritative live —
+    # the per-name trailing stop inside the strategy is the regime-independent protector.
+    current_equity = equity_usd if equity_usd is not None else (sum(state.holdings.values()) or config.capital_usd)
     state.equity_peak = max(state.equity_peak, current_equity)
     drawdown = 0.0 if state.equity_peak == 0 else (state.equity_peak - current_equity) / state.equity_peak
+
+    # Portfolio circuit-breaker: if we've breached the internal hard stop (inside the 30%
+    # DQ gate), override the target to ALL-CASH — liquidate every name, do not re-risk.
+    if drawdown >= config.cfg.hard_dd_stop:
+        alloc["weights"] = {}
+        alloc["hard_dd_stop"] = round(drawdown, 4)
+
+    trades = plan_trades(alloc["weights"], state.holdings, config.capital_usd, min_trade_usd=config.min_trade_usd)
 
     executed, blocked = [], []
     for t in trades:
