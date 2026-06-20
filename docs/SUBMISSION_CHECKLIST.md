@@ -4,20 +4,28 @@ The systematic build is **functionally complete**: validated cost-robust ensembl
 self-custody agent (~74s/decision), honest backtest report, auto-research + robustness harnesses,
 70 tests passing, all pushed. What remains needs a human + on-chain actions (cannot be automated here).
 
+## Two deadlines (don't conflate them)
+- **DoraHacks form submission — Jun 21 · 12:00 UTC** (the binding "you're in the competition" gate). Verified live on DoraHacks 2026-06-20.
+- **On-chain registration — contract open until Jun 25 · 00:00 UTC** (read live from the registry); register before the **Jun 22** trading-window open. Trading runs Jun 22–28.
+
 ## Done (in repo)
-- [x] Strategy: model-averaged ensemble (regime-gated EW over N×MA, 4h rebalance), walk-forward + holdout validated, cost-robust to ~20bps.
+- [x] Strategy: blended book (regime-gated ensemble + 30% core, 4h rebalance), walk-forward + holdout validated, cost-robust net of measured per-name DEX slippage.
 - [x] Live agent: decision → risk-gated trade plan → TWAK self-custody execution → decision log; Monolit edge cached/best-effort.
-- [x] Backtest report (`docs/BACKTEST_RESULTS_TRACK1.md`), design spec, research log + ledger.
-- [x] Execution (`twak swap --chain bsc`, x402, serve) and on-chain registration code (`register.py`).
-- [x] 70 tests; repo pushed (private).
+- [x] Backtest report + **7 charts** (`docs/assets/`, regen `scripts/make_charts.py`), design spec, research log + ledger.
+- [x] Execution (`twak swap --chain bsc`, x402, serve) and registration code (`register.py`; or the official `twak compete register`).
+- [x] **77 tests; repo pushed and PUBLIC.**
+- [x] **TWAK CLI 0.19.1 installed on this host** (nvm Node 22 at `~/.nvm/versions/node/v22.23.0/bin`); `twak compete` confirmed present.
+- [x] **Deploy harness on this machine**: `scripts/deploy/run_cycle.sh` (4h cycle, contest-window-gated live, JSONL decision log) + `scripts/deploy/install_cron.sh`. Dry-run cycle verified end-to-end.
+- [x] **Submission writeup** drafted: `docs/SUBMISSION_WRITEUP.md`. **Demo storyboard**: `docs/DEMO_SCRIPT.md`.
 
 ## Remaining — needs Pavel
-1. **Fund the agent wallet** (low stakes by design): ≤$500 in a BSC stablecoin (USDT/USDC) for trading, a little USDC on **Base** for x402 data payments, and some **BNB** for gas.
-2. **Configure secrets** (never commit): `AGENT_PRIVATE_KEY`, `BSC_RPC_URL`, `TWAK_WALLET_PASSWORD`, `MONOLIT_API_KEY`, optionally `CMC_PRO_API_KEY`. `pip install 'web3>=6'` for registration.
-3. **Register on-chain BEFORE Jun 22** (trading window opens) on `CompetitionRegistry 0x212c61b9b72c95d95bf29cf032f5e5635629aed5`: `register.register_agent(dry_run=False)`; verify `track1-register`.
-4. **Deploy** to the always-on VPS; run the agent on a **4h cron** (or `twak serve --watch`) for Jun 22–28. Dry-run first (`track1-run`), then `--live`.
-5. **DoraHacks submission**: submit the public repo URL + agent wallet address + a short strategy writeup; answer the form (Telegram contact, agent address). **Flip the repo public** before submitting.
-6. **Demo**: short video showing the autonomous self-custody loop end-to-end with on-chain proof (BSC tx hashes) + the x402 data payment — this is what the *Best Use of TWAK* panel scores.
+1. **Trust Wallet Developer Portal credentials** (NEW — any networked `twak` command needs them): `TWAK_ACCESS_ID` + `TWAK_HMAC_SECRET` from the portal, into the gitignored `.env`.
+2. **Agent wallet** — cleanest path is to let **TWAK create it** (`twak wallet` / `twak setup`); the key stays encrypted under `TWAK_WALLET_PASSWORD` and is never pasted anywhere. (Importing an existing `AGENT_PRIVATE_KEY` is the fallback.)
+3. **Fund that wallet** (low stakes): ≤$500 USDT/USDC on **BSC** (trading), a little USDC on **Base** (x402), some **BNB** (gas).
+4. **Register** before Jun 22: `twak compete register` (official; scores for Best Use of TWAK), verify `twak compete status`. Fallback: `track1-register` + `register.register_agent(dry_run=False)` via the `/tmp/w3venv` web3.
+5. **Submit the DoraHacks form by Jun 21 12:00 UTC**: public repo URL (done), agent wallet address, the `SUBMISSION_WRITEUP.md` copy, Telegram contact.
+6. **Go live**: `LIVE=1 ./scripts/deploy/install_cron.sh` for Jun 22–28 (the runner self-gates to the window). Dry-run first.
+7. **Record the demo** per `docs/DEMO_SCRIPT.md` — on-chain tx hashes (register + a self-custody swap) + the x402 payment.
 
 ## Honest expectation
 This is a robust, non-blow-up, regime-gated diversified-beta agent with a deep self-custody/x402
