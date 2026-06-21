@@ -1,11 +1,38 @@
 from __future__ import annotations
 
+import functools
+import json
 import os
 import shutil
 import subprocess
 from dataclasses import dataclass
+from pathlib import Path
 
 _INSTALL_HINT = "twak CLI not found; install from https://agent-kit.trustwallet.com/install.sh"
+
+_UNIVERSE_JSON = Path(__file__).resolve().parent / "data" / "universe_bsc.json"
+
+
+@functools.lru_cache(maxsize=1)
+def _bsc_address_map() -> dict[str, str]:
+    """symbol (UPPER) -> BSC contract address, loaded once from the universe file."""
+    try:
+        data = json.loads(_UNIVERSE_JSON.read_text())
+    except (OSError, ValueError):
+        return {}
+    return {t["symbol"].upper(): t["bsc_contract"] for t in data if t.get("bsc_contract")}
+
+
+def resolve_bsc_asset(asset: str) -> str:
+    """Map a token SYMBOL to its BSC contract address for TWAK.
+
+    TWAK resolves majors (USDT, native BNB) by symbol but rejects long-tail BEP-20
+    symbols (CAKE, ASTER, …) with TOKEN_NOT_FOUND — those must be passed as a 0x
+    contract address. Pass through anything already a 0x address or an unknown
+    symbol unchanged (so native BNB still routes by symbol)."""
+    if asset[:2].lower() == "0x":
+        return asset
+    return _bsc_address_map().get(asset.upper(), asset.upper())
 
 
 @dataclass(frozen=True)
@@ -43,18 +70,19 @@ class TWAKAdapter:
 
     # -- read-only ops --------------------------------------------------------
 
-    def quote_swap(self, amount: float, from_asset: str, to_asset: str, *, chain: str = "bsc") -> str:
+    def quote_swap(
+        self,
+        amount: float,
+        from_asset: str,
+        to_asset: str,
+        *,
+        chain: str = "bsc",
+        usd: bool = False,
+    ) -> str:
         self._require()
-        cmd = [
-            self.command,
-            "swap",
-            str(amount),
-            from_asset.upper(),
-            to_asset.upper(),
-            "--quote-only",
-            "--chain",
-            chain,
-        ]
+        src, dst = resolve_bsc_asset(from_asset), resolve_bsc_asset(to_asset)
+        amt = ["--usd", str(amount)] if usd else [str(amount)]
+        cmd = [self.command, "swap", *amt, src, dst, "--quote-only", "--chain", chain]
         return self._run(cmd)
 
     def wallet_portfolio(self) -> str:
@@ -81,19 +109,25 @@ class TWAKAdapter:
         slippage_pct: float = 1.0,
         password_env: str = "TWAK_WALLET_PASSWORD",
         dry_run: bool = True,
+        usd: bool = True,
     ) -> list[str] | str:
         """Build (and, unless ``dry_run``, run) a real swap.
 
-        When executing, the command omits ``--quote-only`` and resolves the
-        wallet password from ``password_env`` if set. Returns the command list
-        on ``dry_run``, otherwise the CLI stdout.
+        ``amount`` is a **USD value** by default (``usd=True``) — the agent sizes
+        the book in USD — passed via TWAK's ``--usd`` flag; set ``usd=False`` to
+        treat it as a source-token amount. Symbols are resolved to BSC contract
+        addresses (TWAK rejects long-tail BEP-20 symbols). When executing, the
+        command omits ``--quote-only`` and resolves the wallet password from
+        ``password_env`` if set. Returns the command list on ``dry_run``, else stdout.
         """
+        src, dst = resolve_bsc_asset(from_asset), resolve_bsc_asset(to_asset)
+        amt = ["--usd", str(amount)] if usd else [str(amount)]
         cmd = [
             self.command,
             "swap",
-            str(amount),
-            from_asset.upper(),
-            to_asset.upper(),
+            *amt,
+            src,
+            dst,
             "--chain",
             chain,
             "--slippage",

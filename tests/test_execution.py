@@ -34,7 +34,20 @@ def test_quote_swap_includes_quote_only_and_bsc(captured):
     assert "--quote-only" in cmd
     assert "--chain" in cmd and "bsc" in cmd
     assert cmd[:2] == ["twak", "swap"]
-    assert "BNB" in cmd and "USDT" in cmd  # symbols uppercased
+    # native BNB passes through as a symbol; long-tail/stable symbols resolve to a
+    # BSC contract address (TWAK rejects bare BEP-20 symbols like USDT/CAKE).
+    assert "BNB" in cmd
+    assert "0x55d398326f99059ff775485246999027b3197955" in cmd  # USDT on BSC
+
+
+def test_execute_swap_resolves_symbols_and_uses_usd():
+    # The live path sizes in USD and must hand TWAK contract addresses, not symbols.
+    cmd = TWAKAdapter().execute_swap(50.0, "USDT", "CAKE", chain="bsc")
+    assert isinstance(cmd, list)
+    assert "--usd" in cmd and "50.0" in cmd
+    assert "0x55d398326f99059ff775485246999027b3197955" in cmd  # USDT
+    assert "0x0e09fabb73bd3ade0a17ecc321fd13a19e81ce82" in cmd  # CAKE
+    assert "CAKE" not in cmd and "USDT" not in cmd               # no bare symbols
 
 
 def test_execute_swap_dry_run_returns_command_without_running(monkeypatch):
