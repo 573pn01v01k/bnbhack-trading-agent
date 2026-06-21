@@ -58,7 +58,7 @@ Across 17 non-overlapping weeks, **zero** breached the 30% gate. Worst drawdown 
 - Repo: https://github.com/573pn01v01k/bnbhack-trading-agent (public)
 - Reproduce results: `PYTHONPATH=src python3 -m bnbhack_agent.cli track1-backtest`
 - Charts: `docs/assets/` (regenerate with `scripts/make_charts.py`)
-- Agent wallet address: **`<fill after wallet is created>`**
+- Agent wallet address (BSC, self-custody via TWAK): **`0x0DcdE75859dc00EB932f890E9076AADef0574655`**
 - Demo video: **`<fill after recording>`**
 - Telegram contact: **`<fill>`**
 
