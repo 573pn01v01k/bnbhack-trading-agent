@@ -89,6 +89,33 @@ class TWAKAdapter:
         self._require()
         return self._run([self.command, "wallet", "portfolio"])
 
+    def bsc_address(self) -> str:
+        self._require()
+        out = self._run([self.command, "wallet", "address", "--chain", "bsc", "--json"])
+        return json.loads(out).get("address", "")
+
+    def holding_usd(self, token_addr: str, wallet: str) -> float:
+        """USD value of one ERC-20 holding on BSC, queried by contract (so it does
+        NOT depend on TWAK's token auto-discovery, which misses freshly-bought names).
+        Returns 0.0 if absent or unreadable."""
+        try:
+            out = self._run([
+                self.command, "balance", "--chain", "bsc",
+                "--address", wallet, "--token", token_addr, "--json",
+            ])
+            return float(json.loads(out).get("totalUsd", 0.0) or 0.0)
+        except (subprocess.CalledProcessError, ValueError, KeyError):
+            return 0.0
+
+    def holdings_usd_bsc(self, symbol_to_addr: dict[str, str], wallet: str) -> dict[str, float]:
+        """Per-symbol USD holdings on BSC for the given symbol->contract map."""
+        out: dict[str, float] = {}
+        for sym, addr in symbol_to_addr.items():
+            v = self.holding_usd(addr, wallet)
+            if v > 0.0:
+                out[sym] = v
+        return out
+
     def balance(self) -> str:
         self._require()
         return self._run([self.command, "balance"])
@@ -242,9 +269,12 @@ class RiskCaps:
     """Safety caps enforced before any signing swap.
 
     ``hard_drawdown_stop`` sits inside the contest's 30% disqualification line.
+    ``max_position_frac`` is the execution backstop and must sit just ABOVE the
+    strategy's own per-name cap (``StrategyConfig.max_weight`` = 0.34) — otherwise
+    the gate silently reshapes the validated book and breaks decision parity.
     """
 
-    max_position_frac: float = 0.25
+    max_position_frac: float = 0.35
     per_trade_max_loss_frac: float = 0.05
     daily_loss_limit_frac: float = 0.10
     hard_drawdown_stop: float = 0.22

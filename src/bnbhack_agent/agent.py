@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import json
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields as dataclass_fields
 from pathlib import Path
 
 from . import marketdata as MD
@@ -38,11 +38,14 @@ class AgentState:
     last_trade_day: str = ""
     last_trade_ts: float = 0.0                     # epoch seconds of last executed trade (heartbeat)
     holdings: dict = field(default_factory=dict)   # symbol -> USD value (model)
+    live_started: bool = False                     # has a live cycle seeded the real-equity peak?
 
     @classmethod
     def load(cls) -> "AgentState":
         if STATE_FILE.exists():
-            return cls(**json.loads(STATE_FILE.read_text()))
+            data = json.loads(STATE_FILE.read_text())
+            fields = {f.name for f in dataclass_fields(cls)}
+            return cls(**{k: v for k, v in data.items() if k in fields})
         return cls()
 
     def save(self) -> None:
@@ -167,6 +170,14 @@ def plan_trades(target_weights: dict, holdings: dict, capital: float, *, min_tra
     return trades
 
 
+def _swap_error(exc: Exception) -> str:
+    """Short, password-free reason from a failed TWAK swap. Never use str(exc): it
+    contains the argv, including the --password value."""
+    stderr = getattr(exc, "stderr", "") or ""
+    line = stderr.strip().splitlines()[-1] if stderr.strip() else type(exc).__name__
+    return line[:160]
+
+
 def run_once(config: AgentConfig | None = None, client=None, *, live: bool = False,
              equity_usd: float | None = None) -> dict:
     config = config or AgentConfig()
@@ -174,11 +185,43 @@ def run_once(config: AgentConfig | None = None, client=None, *, live: bool = Fal
     twak = TWAKAdapter()
 
     alloc = decide(config, client=client)
+    stable_balance: float | None = None              # real USDT pool (live only); gates buys
 
-    # Real equity drives the drawdown circuit-breaker. Live: pass the TWAK portfolio
-    # value (sum of token balances valued in USD). Dry-run/backtest: mark the USD-model
-    # holdings to nothing better than capital, so the stop is only authoritative live —
-    # the per-name trailing stop inside the strategy is the regime-independent protector.
+    # LIVE position sync — rebalance against the REAL wallet, never a stale model.
+    # We read each basket/held name's USD value from TWAK *by contract* (auto-discovery
+    # misses freshly-bought tokens), set holdings + equity from reality, and size to the
+    # actual book. Without this the live loop would re-buy the same names every cycle.
+    # Dry-run keeps the model holdings so the loop stays observable offline.
+    if live and equity_usd is None:
+        from .execution import resolve_bsc_asset
+        tradeable = U.tradeable_tokens(U.load_universe())
+        try:
+            basket = set(U.dex_liquid_candidates([t.symbol for t in tradeable]))
+        except Exception:
+            basket = set()
+        # Include the stable leg explicitly — stables aren't "tradeable tokens" but ARE
+        # the cash that must count toward equity. resolve_bsc_asset covers stables+basket.
+        want = set(alloc["weights"]) | basket | {STABLE, "USDC"}
+        addr = {s: a for s in want if (a := resolve_bsc_asset(s))[:2].lower() == "0x"}
+        wallet = twak.bsc_address()
+        usd = twak.holdings_usd_bsc(addr, wallet)
+        stable = usd.pop(STABLE, 0.0) + usd.pop("USDC", 0.0)
+        token_usd = {k: round(v, 2) for k, v in usd.items() if v >= 0.5}  # ignore dust
+        equity_usd = stable + sum(token_usd.values())
+        state.holdings = token_usd
+        stable_balance = stable                      # real USDT available to fund buys
+        config.capital_usd = round(max(equity_usd, 1.0), 2)
+        # Seed the drawdown peak from REAL equity on the first live cycle — never inherit
+        # a dry-run model peak (capital_usd=500), which would fabricate a drawdown and
+        # trip the hard-DD circuit-breaker on a freshly-funded, smaller book.
+        if not state.live_started:
+            state.equity_peak = equity_usd
+            state.live_started = True
+
+    # Real equity drives the drawdown circuit-breaker. Live: synced above from the wallet.
+    # Dry-run/backtest: mark the USD-model holdings to nothing better than capital, so the
+    # stop is only authoritative live — the per-name trailing stop inside the strategy is
+    # the regime-independent protector.
     current_equity = equity_usd if equity_usd is not None else (sum(state.holdings.values()) or config.capital_usd)
     state.equity_peak = max(state.equity_peak, current_equity)
     drawdown = 0.0 if state.equity_peak == 0 else (state.equity_peak - current_equity) / state.equity_peak
@@ -191,25 +234,47 @@ def run_once(config: AgentConfig | None = None, client=None, *, live: bool = Fal
 
     trades = plan_trades(alloc["weights"], state.holdings, config.capital_usd, min_trade_usd=config.min_trade_usd)
 
+    # Sells first (they free up USDT), then buys — and live, cap cumulative buys to the
+    # real USDT pool minus a gas+slippage reserve, so the last buy never fails on
+    # insufficient balance. Each swap is isolated: a single failure is logged and the
+    # cycle continues (never aborts the loop or the state save).
+    trades = sorted(trades, key=lambda t: 0 if t["side"] == "sell" else 1)
+    if stable_balance is not None:
+        reserve = max(3.0, 0.015 * current_equity)   # gas + slippage headroom
+        stable_avail = max(0.0, stable_balance - reserve)
+    else:
+        stable_avail = None
     executed, blocked = [], []
     for t in trades:
+        usd = t["usd"]
         ok, reason = check_trade_allowed(
             config.caps,
             current_drawdown=drawdown,
             daily_loss=0.0,
-            proposed_position_frac=t["usd"] / max(config.capital_usd, 1.0),
+            proposed_position_frac=usd / max(config.capital_usd, 1.0),
             slippage_pct=0.5,
         )
         if not ok:
             blocked.append({**t, "reason": reason})
             continue
-        cmd = twak.execute_swap(t["usd"], t["from"], t["to"], chain="bsc", dry_run=not live)
-        executed.append({**t, "twak_cmd": cmd if not live else "submitted"})
+        if t["side"] == "buy" and stable_avail is not None and usd > stable_avail:
+            if stable_avail < config.min_trade_usd:
+                blocked.append({**t, "reason": f"insufficient stable: have ${stable_avail:.2f}"})
+                continue
+            usd = round(stable_avail, 2)             # shrink the buy to fit the USDT on hand
+        try:
+            cmd = twak.execute_swap(usd, t["from"], t["to"], chain="bsc", dry_run=not live)
+        except Exception as e:  # noqa: BLE001 — one bad swap must not abort the cycle
+            blocked.append({**t, "usd": usd, "reason": f"swap failed: {_swap_error(e)}"})
+            continue
+        executed.append({**t, "usd": usd, "twak_cmd": cmd if not live else "submitted"})
+        if stable_avail is not None:
+            stable_avail += usd if t["side"] == "sell" else -usd
         if not live:  # update model holdings in dry-run
             if t["side"] == "buy":
-                state.holdings[t["symbol"]] = state.holdings.get(t["symbol"], 0.0) + t["usd"]
+                state.holdings[t["symbol"]] = state.holdings.get(t["symbol"], 0.0) + usd
             else:
-                state.holdings[t["symbol"]] = max(0.0, state.holdings.get(t["symbol"], 0.0) - t["usd"])
+                state.holdings[t["symbol"]] = max(0.0, state.holdings.get(t["symbol"], 0.0) - usd)
 
     # Heartbeat: guarantee the contest's >=1-trade/day rule in ANY regime (even fully
     # risk-off with no moonshot movers). If nothing traded and we've been idle too long,
@@ -219,11 +284,15 @@ def run_once(config: AgentConfig | None = None, client=None, *, live: bool = Fal
     if executed:
         state.last_trade_ts = now_ts
     elif now_ts - state.last_trade_ts > config.heartbeat_hours * 3600:
-        cmd = twak.execute_swap(config.min_trade_usd, STABLE, "USDC", chain="bsc", dry_run=not live)
-        executed.append({"side": "heartbeat", "symbol": "USDC", "usd": config.min_trade_usd,
-                         "from": STABLE, "to": "USDC", "twak_cmd": cmd if not live else "submitted", "heartbeat": True})
-        state.last_trade_ts = now_ts
-        heartbeat = True
+        try:
+            cmd = twak.execute_swap(config.min_trade_usd, STABLE, "USDC", chain="bsc", dry_run=not live)
+            executed.append({"side": "heartbeat", "symbol": "USDC", "usd": config.min_trade_usd,
+                             "from": STABLE, "to": "USDC", "twak_cmd": cmd if not live else "submitted", "heartbeat": True})
+            state.last_trade_ts = now_ts
+            heartbeat = True
+        except Exception as e:  # noqa: BLE001 — heartbeat is best-effort
+            blocked.append({"side": "heartbeat", "symbol": "USDC", "usd": config.min_trade_usd,
+                            "reason": f"heartbeat failed: {_swap_error(e)}"})
 
     day = time.strftime("%Y-%m-%d", time.gmtime())
     record = {
